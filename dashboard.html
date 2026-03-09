@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPC Dashboard 2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg0:#07090f; --bg1:#0c0f1a; --bg2:#111520; --bg3:#171c2e; --bg4:#1d2438;
+  --border:#1a2035; --border2:#232d47;
+  --text:#dde4f5; --text2:#7a8aaa; --text3:#3d4d6a;
+  --blue:#3b82f6; --cyan:#06b6d4; --green:#10b981;
+  --yellow:#f59e0b; --red:#ef4444; --teal:#14b8a6; --violet:#8b5cf6;
+  --font:'Onest',sans-serif; --mono:'JetBrains Mono',monospace;
+  --r:10px; --r-sm:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{background:var(--bg0);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg1)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:50px;background:var(--bg1);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;gap:12px}
+.hdr-l{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.logo{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);letter-spacing:1.5px;display:flex;align-items:center;gap:7px}
+.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:blink 2.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.hdr-title{font-size:12px;color:var(--text2);border-left:1px solid var(--border);padding-left:12px}
+.hdr-spec{font-size:12px;font-weight:600;background:var(--bg3);border:1px solid var(--border2);padding:2px 10px;border-radius:20px}
+.hdr-r{display:flex;align-items:center;gap:7px}
+.hdr-date{font-family:var(--mono);font-size:10px;color:var(--text3)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.4px;padding:5px 13px;border-radius:var(--r-sm);border:none;cursor:pointer;transition:all .16s;white-space:nowrap}
+.btn-primary{background:var(--cyan);color:#000}
+.btn-primary:hover{background:#22d3ee;box-shadow:0 0 14px rgba(6,182,212,.3)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn-sm{padding:3px 9px;font-size:10px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* TABS */
+.tabs{display:flex;gap:2px;padding:8px 20px 0;background:var(--bg1);border-bottom:1px solid var(--border)}
+.tab{font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase;padding:7px 16px;border:1px solid transparent;border-bottom:none;border-radius:var(--r-sm) var(--r-sm) 0 0;background:transparent;color:var(--text3);cursor:pointer;transition:all .16s}
+.tab:hover{color:var(--text2)}
+.tab.on{color:var(--cyan);background:var(--bg0);border-color:var(--border);border-bottom-color:var(--bg0);margin-bottom:-1px}
+
+/* MAIN */
+.main{padding:20px;max-width:1900px;margin:0 auto}
+.page{display:none}.page.on{display:block}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap}
+.mon-nav{display:flex;align-items:center;gap:8px}
+.nav-btn{width:28px;height:28px;border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.nav-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.mon-label{font-family:var(--mono);font-size:14px;font-weight:600;min-width:140px;text-align:center}
+.spec-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.stab{font-family:var(--mono);font-size:10px;padding:4px 11px;border-radius:20px;border:1px solid var(--border2);background:transparent;color:var(--text3);cursor:pointer;transition:all .14s}
+.stab:hover{color:var(--text2)}
+.stab.on{background:var(--violet);border-color:var(--violet);color:#fff}
+
+/* KPI AREA */
+.kpi-area{display:grid;grid-template-columns:190px 1fr;gap:12px;margin-bottom:18px}
+@media(max-width:880px){.kpi-area{grid-template-columns:1fr}}
+
+/* GAUGE */
+.gauge-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;overflow:hidden}
+.gauge-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%,rgba(6,182,212,.06) 0%,transparent 65%);pointer-events:none}
+.g-lbl{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3)}
+.g-wrap{position:relative;width:128px;height:128px}
+.g-canvas{width:128px;height:128px}
+.g-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.g-pct{font-family:var(--mono);font-size:28px;font-weight:700;line-height:1}
+.g-sub{font-size:9px;color:var(--text3);margin-top:2px}
+.g-worked{font-family:var(--mono);font-size:11px;color:var(--text2);text-align:center}
+.g-status{font-family:var(--mono);font-size:10px;text-align:center;padding:3px 9px;border-radius:20px}
+
+/* KPI CARDS */
+.kpi-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:1100px){.kpi-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:580px){.kpi-cards{grid-template-columns:1fr}}
+
+.kcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;position:relative;overflow:hidden;transition:border-color .18s}
+.kcard::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:0 0 var(--r) var(--r)}
+.kcard.cr::after{background:var(--red)}.kcard.cy::after{background:var(--yellow)}
+.kcard.cg::after{background:var(--green)}.kcard.ct::after{background:var(--teal)}
+.kcard.cn::after{background:var(--border)}
+.kn{font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.kf{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1;margin-bottom:2px}
+.ksub{font-size:10px;color:var(--text3);margin-bottom:8px}
+.kprog{height:2px;background:var(--bg4);border-radius:2px;margin-bottom:8px;overflow:hidden}
+.kprog-fill{height:100%;border-radius:2px;transition:width .6s}
+.kmeta{display:flex;justify-content:space-between;align-items:flex-end;gap:4px}
+.kmeta-col{font-family:var(--mono);font-size:11px}
+.kmeta-lbl{font-size:9px;color:var(--text3);display:block;margin-bottom:1px}
+.kpct{font-family:var(--mono);font-size:12px;font-weight:600;padding:2px 7px;border-radius:4px}
+.pct-r{color:var(--red);background:rgba(239,68,68,.1)}.pct-y{color:var(--yellow);background:rgba(245,158,11,.1)}
+.pct-g{color:var(--green);background:rgba(16,185,129,.1)}.pct-t{color:var(--teal);background:rgba(20,184,166,.1)}
+.pct-n{color:var(--text3);background:var(--bg3)}
+
+/* SECTION HEAD */
+.sec-head{display:flex;align-items:center;gap:10px;margin:20px 0 10px}
+.sec-ttl{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);white-space:nowrap}
+.sec-line{flex:1;height:1px;background:var(--border)}
+
+/* CHARTS ROW */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}
+@media(max-width:780px){.charts-row{grid-template-columns:1fr}}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px}
+.chart-ttl{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
+.chart-wrap{position:relative;height:155px}
+
+/* TABLES */
+.tbl-outer{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:auto;margin-bottom:18px}
+
+.mtbl{border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;width:100%}
+.mtbl th{background:var(--bg3);color:var(--text3);font-size:9px;letter-spacing:.7px;text-transform:uppercase;padding:7px 10px;text-align:right;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.mtbl th.fix{text-align:left;position:sticky;left:0;z-index:10;background:var(--bg3)}
+.mtbl th.dh{text-align:center !important;color:var(--cyan);border-right:1px solid var(--border2);padding:5px 10px}
+.mtbl td{padding:6px 10px;text-align:right;border-bottom:1px solid rgba(26,32,53,.7);color:var(--text2)}
+.mtbl td.fix{text-align:left;position:sticky;left:0;background:var(--bg2);z-index:4;color:var(--text3)}
+.mtbl tr:hover td{background:rgba(6,182,212,.03)}.mtbl tr:hover td.fix{background:var(--bg2)}
+
+.rp td{background:rgba(139,92,246,.06) !important;color:var(--text2) !important}
+.rf td{background:rgba(16,185,129,.06) !important;color:var(--text) !important;font-weight:600}
+.rt td{background:rgba(6,182,212,.06)  !important;color:var(--cyan) !important}
+.rpc td{background:rgba(245,158,11,.05)!important;font-weight:600}
+.rw td{background:var(--bg3) !important;color:var(--text) !important;font-weight:600;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.rb td{opacity:.3}
+.rp td.fix{color:var(--violet)!important}.rf td.fix{color:var(--green)!important}
+.rt td.fix{color:var(--cyan)!important}.rpc td.fix{color:var(--yellow)!important}
+.rw td.fix{color:var(--text)!important}
+
+.ytbl{border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;width:100%}
+.ytbl th{background:var(--bg3);color:var(--text3);font-size:9px;letter-spacing:.7px;text-transform:uppercase;padding:7px 10px;text-align:right;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.ytbl th.fix{text-align:left;position:sticky;left:0;z-index:10;background:var(--bg3)}
+.ytbl td{padding:6px 10px;text-align:right;border-bottom:1px solid rgba(26,32,53,.6);color:var(--text2)}
+.ytbl td.fix{text-align:left;position:sticky;left:0;background:var(--bg2);z-index:4;color:var(--text)}
+.ytbl tr:hover td{background:rgba(6,182,212,.03)}.ytbl tr:hover td.fix{background:var(--bg2)}
+.yf td{font-weight:600;color:var(--text)!important}.yp td{color:var(--text3)!important;font-size:10px}
+.ypc td{font-weight:600;border-bottom:1px solid var(--border)!important}
+.ytot td{background:var(--bg3)!important;font-weight:700;color:var(--text)!important;border-top:2px solid var(--border2)!important}
+.yavg td{background:var(--bg3)!important;color:var(--text2)!important;font-style:italic;border-bottom:2px solid var(--border2)!important}
+
+/* INPUT FORM */
+.inp-section{max-width:680px}
+.form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:14px}
+.form-card-ttl{font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--cyan);margin-bottom:18px}
+.dir-block{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px}
+.dir-lbl{font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:600;margin-bottom:10px}
+.f-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media(max-width:560px){.f-grid{grid-template-columns:repeat(2,1fr)}}
+.fgrp label{display:block;font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.finput{width:100%;background:var(--bg4);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:13px;padding:7px 9px;border-radius:var(--r-sm);outline:none;transition:border-color .14s}
+.finput:focus{border-color:var(--cyan)}
+.fselect{width:100%;background:var(--bg4);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 9px;border-radius:var(--r-sm);outline:none;cursor:pointer}
+.fselect:focus{border-color:var(--cyan)}
+.fselect option{background:var(--bg3)}
+.f-actions{display:flex;gap:8px;margin-top:4px}
+.fstatus{margin-top:8px;font-family:var(--mono);font-size:11px}
+
+.log-tbl{border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;width:100%}
+.log-tbl th{background:var(--bg3);color:var(--text3);font-size:9px;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
+.log-tbl td{padding:5px 10px;border-bottom:1px solid rgba(26,32,53,.5);color:var(--text2)}
+.log-tbl tr:hover td{background:rgba(6,182,212,.03)}
+
+/* PLAN PAGE */
+.plan-section{max-width:760px}
+
+/* LOADING */
+.overlay{position:fixed;inset:0;background:rgba(7,9,15,.88);display:flex;align-items:center;justify-content:center;z-index:1000;backdrop-filter:blur(4px)}
+.spinner{width:34px;height:34px;border:3px solid var(--border2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-txt{font-family:var(--mono);font-size:11px;color:var(--text2);margin-top:12px}
+
+.toast{position:fixed;bottom:18px;right:18px;background:var(--bg2);border:1px solid var(--green);color:var(--green);font-family:var(--mono);font-size:11px;padding:9px 16px;border-radius:var(--r-sm);z-index:2000;opacity:0;transform:translateY(6px);transition:all .22s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}.toast.err{border-color:var(--red);color:var(--red)}
+.empty{text-align:center;padding:36px 16px;font-family:var(--mono);font-size:11px;color:var(--text3)}
+.null-v{color:var(--text3)}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-l">
+    <div class="logo"><div class="logo-dot"></div>PPC · 2026</div>
+    <div class="hdr-title" id="hTitle">Лидогенерация</div>
+    <div class="hdr-spec" id="hSpec" style="display:none"></div>
+  </div>
+  <div class="hdr-r">
+    <span class="hdr-date" id="hDate"></span>
+    <button class="btn btn-ghost btn-sm" onclick="refreshData()">↻</button>
+    <button class="btn btn-primary btn-sm" id="rebuildBtn" style="display:none" onclick="triggerRebuild()">▶ Пересчитать</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs" id="tabsBar">
+  <button class="tab on"  onclick="switchTab('monthly',this)">Месяц</button>
+  <button class="tab"     onclick="switchTab('yearly',this)">Год</button>
+  <button class="tab"     onclick="switchTab('input',this)">Ввод данных</button>
+  <button class="tab mgr" onclick="switchTab('plan',this)" style="display:none">План</button>
+</div>
+
+<div class="main">
+
+<!-- ══ TAB: MONTHLY ══════════════════════════════════════════ -->
+<div class="page on" id="tab-monthly">
+  <div class="toolbar">
+    <div class="mon-nav">
+      <button class="nav-btn" onclick="prevMonth()">‹</button>
+      <div class="mon-label" id="monLabel">—</div>
+      <button class="nav-btn" onclick="nextMonth()">›</button>
+    </div>
+    <div class="spec-tabs mgr" id="specTabsMon" style="display:none"></div>
+  </div>
+
+  <div class="kpi-area">
+    <div class="gauge-card">
+      <div class="g-lbl">Прогноз БП</div>
+      <div class="g-wrap">
+        <canvas class="g-canvas" id="gaugeC"></canvas>
+        <div class="g-center">
+          <div class="g-pct" id="gPct">—</div>
+          <div class="g-sub">тренд/план</div>
+        </div>
+      </div>
+      <div class="g-worked" id="gWorked">—</div>
+      <div class="g-status" id="gStatus"></div>
+    </div>
+    <div class="kpi-cards" id="kpiCards"></div>
+  </div>
+
+  <div class="sec-head"><div class="sec-ttl">Динамика</div><div class="sec-line"></div></div>
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-ttl">БП (SQL) по неделям</div>
+      <div class="chart-wrap"><canvas id="cSqlW"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-ttl">Цена БП (CPsql) по неделям</div>
+      <div class="chart-wrap"><canvas id="cCpsqlW"></canvas></div>
+    </div>
+  </div>
+
+  <div class="sec-head"><div class="sec-ttl">Детализация по дням</div><div class="sec-line"></div></div>
+  <div class="tbl-outer" id="monTblWrap"><div class="empty">Загрузка...</div></div>
+</div>
+
+<!-- ══ TAB: YEARLY ══════════════════════════════════════════ -->
+<div class="page" id="tab-yearly">
+  <div class="toolbar">
+    <div style="font-family:var(--mono);font-size:13px;color:var(--text2)">Ретроспектива 2026</div>
+    <div class="spec-tabs mgr" id="specTabsYr" style="display:none"></div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-ttl">БП (SQL) — факт vs план</div>
+      <div class="chart-wrap"><canvas id="cYrSql"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-ttl">Цена БП (CPsql) по месяцам</div>
+      <div class="chart-wrap"><canvas id="cYrCpsql"></canvas></div>
+    </div>
+  </div>
+  <div class="tbl-outer" id="yrTblWrap"><div class="empty">Загрузка...</div></div>
+</div>
+
+<!-- ══ TAB: INPUT ══════════════════════════════════════════ -->
+<div class="page" id="tab-input">
+  <div class="inp-section">
+    <div class="sec-head"><div class="sec-ttl">Ввод данных за день</div><div class="sec-line"></div></div>
+    <div class="form-card">
+      <div class="form-card-ttl">Заполните показатели</div>
+      <div style="margin-bottom:16px">
+        <div class="fgrp" style="max-width:170px">
+          <label>Дата</label>
+          <input type="date" class="finput" id="inp_date">
+        </div>
+      </div>
+      <div id="inpDirs"></div>
+      <div class="f-actions" style="margin-top:18px">
+        <button class="btn btn-primary" onclick="submitDaily()" id="submitBtn">✓ Отправить</button>
+        <button class="btn btn-ghost" onclick="clearInpForm()">Очистить</button>
+      </div>
+      <div class="fstatus" id="inpStatus"></div>
+    </div>
+    <div class="sec-head"><div class="sec-ttl">Последние записи</div><div class="sec-line"></div></div>
+    <div class="tbl-outer">
+      <table class="log-tbl">
+        <thead><tr><th>Дата</th><th>Направление</th><th>Клики</th><th>Расход</th><th>MQL</th><th>SQL</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="6" class="empty">—</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB: PLAN (manager) ══════════════════════════════════ -->
+<div class="page" id="tab-plan">
+  <div class="plan-section">
+    <div class="sec-head"><div class="sec-ttl">Ввод плана на месяц</div><div class="sec-line"></div></div>
+    <div class="form-card">
+      <div class="form-card-ttl">Параметры</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div class="fgrp"><label>Месяц</label><input type="month" class="finput" id="plan_month"></div>
+        <div class="fgrp"><label>Специалист</label><select class="fselect" id="plan_spec"></select></div>
+      </div>
+      <div id="planDirFields"></div>
+      <div class="f-actions" style="margin-top:18px">
+        <button class="btn btn-primary" onclick="submitPlan()">✓ Сохранить план</button>
+      </div>
+      <div class="fstatus" id="planStatus"></div>
+    </div>
+    <div class="sec-head"><div class="sec-ttl">История планов</div><div class="sec-line"></div></div>
+    <div class="tbl-outer" style="max-height:380px;overflow-y:auto">
+      <table class="log-tbl">
+        <thead><tr><th>Месяц</th><th>Специалист</th><th>Направление</th><th>Клики</th><th>Расход</th><th>MQL</th><th>SQL</th></tr></thead>
+        <tbody id="planHistBody"><tr><td colspan="7" class="empty">—</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- Loading -->
+<div class="overlay" id="overlay">
+  <div style="display:flex;flex-direction:column;align-items:center">
+    <div class="spinner"></div>
+    <div class="load-txt" id="loadTxt">Загрузка...</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  ★ CONFIG — замените URL после деплоя Apps Script
+// ══════════════════════════════════════════════════════════════
+const SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+const UP      = new URLSearchParams(location.search);
+const SPEC_ID = UP.get('spec') || 'manager';
+const IS_MGR  = SPEC_ID === 'manager';
+
+const MN_RU    = ['','Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const MN_SHORT = ['','янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+
+let S = {
+  settings: { specs:[], dirs:[] },
+  year: 2026, month: new Date().getMonth()+1,
+  selSpec: SPEC_ID,
+  kpi:[], monthly:[], yearly:[], log:[]
+};
+
+let CH = {};   // charts
+let gaugeChart = null;
+
+// ══════════════════════════════════════════════════════════════
+//  API
+// ══════════════════════════════════════════════════════════════
+async function GET(action, params={}) {
+  const qs = new URLSearchParams({action, t:Date.now(), ...params}).toString();
+  const r  = await fetch(`${SCRIPT_URL}?${qs}`);
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error||'API error');
+  return d;
+}
+
+async function POST(body) {
+  const r = await fetch(SCRIPT_URL, {
+    method:'POST', body:JSON.stringify(body),
+    headers:{'Content-Type':'text/plain'}
+  });
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+async function init() {
+  load('Загрузка настроек...');
+  try {
+    const s = await GET('getSettings');
+    S.settings = s;
+
+    document.getElementById('hDate').textContent =
+      new Date().toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',month:'long'});
+
+    if (!IS_MGR) {
+      const sp = s.specs.find(x => x.id===SPEC_ID);
+      document.getElementById('hSpec').textContent = sp ? sp.name : SPEC_ID;
+      document.getElementById('hSpec').style.display = '';
+      document.getElementById('hTitle').textContent  = 'Мой дашборд';
+    } else {
+      document.getElementById('rebuildBtn').style.display = '';
+      document.querySelectorAll('.mgr').forEach(el => el.style.display='');
+      buildSpecTabs();
+    }
+
+    buildInpForm();
+    buildPlanForm();
+    document.getElementById('inp_date').value = toISODate(new Date());
+
+    const now = new Date();
+    S.month = now.getMonth()+1;
+    S.year  = now.getFullYear();
+
+    await loadMonthly();
+    await loadLog();
+  } catch(e) {
+    showToast('Ошибка: '+e.message, true);
+    console.error(e);
+  } finally { unload(); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  LOAD MONTHLY
+// ══════════════════════════════════════════════════════════════
+async function loadMonthly() {
+  load('Загрузка данных...');
+  try {
+    const mk = mkey(S.year, S.month);
+    const sp = IS_MGR ? S.selSpec : SPEC_ID;
+    const [k, m] = await Promise.all([
+      GET('getKpi',     {month:mk, spec:sp}),
+      GET('getMonthly', {month:mk, spec:sp})
+    ]);
+    S.kpi     = k.rows||[];
+    S.monthly = m.rows||[];
+    updateMonLabel();
+    renderKpi();
+    renderMonTable();
+    renderMonCharts();
+  } catch(e) { showToast('Ошибка: '+e.message, true); console.error(e); }
+  finally { unload(); }
+}
+
+async function loadYearly() {
+  load('Загрузка годовых данных...');
+  try {
+    const sp  = IS_MGR ? S.selSpec : SPEC_ID;
+    const res = await GET('getYearly', {spec:sp});
+    S.yearly  = res.rows||[];
+    renderYrTable();
+    renderYrCharts();
+  } catch(e) { showToast('Ошибка: '+e.message, true); }
+  finally { unload(); }
+}
+
+async function loadLog() {
+  try {
+    const mk  = mkey(S.year, S.month);
+    const res = await GET('getInputLog', {spec:SPEC_ID, month:mk});
+    S.log     = res.rows||[];
+    renderLog();
+  } catch(e) { console.error('log:', e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  KPI RENDER
+// ══════════════════════════════════════════════════════════════
+function renderKpi() {
+  const sp  = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+
+  const row = S.kpi.find(r =>
+    r['Направление']==='Общее' &&
+    (tgt==='Все' ? r['Специалист']==='Все' : r['Специалист']===tgt)
+  );
+
+  if (!row) {
+    document.getElementById('kpiCards').innerHTML =
+      '<div class="empty" style="grid-column:1/-1">Нет данных за выбранный месяц</div>';
+    drawGauge(null);
+    document.getElementById('gWorked').textContent='—';
+    document.getElementById('gStatus').textContent='';
+    return;
+  }
+
+  const worked = row['Отработано']||0, total = row['Рабочих_дней']||0;
+  document.getElementById('gWorked').textContent = `Отраб. ${worked} из ${total} дн.`;
+
+  const sqlPct = row['SQL_пвып'];
+  drawGauge(sqlPct);
+  const gc = cc(sqlPct);
+  const statusTxt = {
+    'cr':'< 50% — нужно ускориться','cy':'50–80% — следить за темпом',
+    'cg':'80–100% — хороший темп',  'ct':'> 100% — план перевыполняется','cn':'нет данных плана'
+  }[gc];
+  const el = document.getElementById('gStatus');
+  el.textContent = statusTxt;
+  el.className   = 'g-status pct-'+gc.replace('c','');
+
+  const cards = [
+    {n:'КЛИКИ',  fk:'Клики_факт', tk:'Клики_тренд', pk:'Клики_план', pctk:'Клики_пвып', fmt:fmtN},
+    {n:'ЗАЯВКИ', fk:'MQL_факт',   tk:'MQL_тренд',   pk:'MQL_план',   pctk:'MQL_пвып',   fmt:fmtN},
+    {n:'БП/SQL', fk:'SQL_факт',   tk:'SQL_тренд',   pk:'SQL_план',   pctk:'SQL_пвып',   fmt:fmtN},
+    {n:'РАСХОД', fk:'Расход_факт',tk:'Расход_тренд',pk:'Расход_план',pctk:'Расход_пвып',fmt:fmtM},
+  ];
+
+  const fillColors = {cr:'var(--red)',cy:'var(--yellow)',cg:'var(--green)',ct:'var(--teal)',cn:'var(--border2)'};
+
+  document.getElementById('kpiCards').innerHTML = cards.map(c => {
+    const f=row[c.fk], t=row[c.tk], p=row[c.pk], pct=row[c.pctk];
+    const cls = cc(pct);
+    const prog = pct!==null ? Math.min(100, pct) : 0;
+    return `<div class="kcard ${cls}">
+      <div class="kn">${c.n}</div>
+      <div class="kf">${f!==null ? c.fmt(f) : '—'}</div>
+      <div class="ksub">факт на сегодня</div>
+      <div class="kprog"><div class="kprog-fill" style="width:${prog}%;background:${fillColors[cls]}"></div></div>
+      <div class="kmeta">
+        <div class="kmeta-col"><span class="kmeta-lbl">Тренд</span>${t!==null ? c.fmt(t) : '—'}</div>
+        <div class="kmeta-col"><span class="kmeta-lbl">План</span>${p!==null ? c.fmt(p) : '—'}</div>
+        <div class="kpct pct-${cls.replace('c','')}">${pct!==null ? pct+'%' : '—'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GAUGE
+// ══════════════════════════════════════════════════════════════
+function drawGauge(pct) {
+  const el = document.getElementById('gPct');
+  const col = pctColor(pct);
+  el.textContent = pct!==null ? Math.round(pct)+'%' : '—';
+  el.style.color = col;
+  if (gaugeChart) { gaugeChart.destroy(); gaugeChart=null; }
+  const ctx = document.getElementById('gaugeC').getContext('2d');
+  const fill = pct!==null ? Math.min(pct/100, 1.5) : 0;
+  gaugeChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{datasets:[{
+      data:[fill, Math.max(0,1.5-fill)],
+      backgroundColor:[col,'#1d2438'],
+      borderWidth:0, circumference:270, rotation:225
+    }]},
+    options:{responsive:false,cutout:'76%',
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      animation:{duration:600,easing:'easeOutQuart'}}
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MONTHLY TABLE
+// ══════════════════════════════════════════════════════════════
+function renderMonTable() {
+  const wrap = document.getElementById('monTblWrap');
+  const dirs = [...S.settings.dirs, 'Общее'];
+  const sp   = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt  = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+
+  const rows = S.monthly.filter(r => r['Специалист']===tgt);
+  if (!rows.length) { wrap.innerHTML='<div class="empty">Нет данных за выбранный месяц</div>'; return; }
+
+  const MCOLS = ['Клики','CPC','MQL','CR%','SQL','%БП','Расход','CPL','CPsql'];
+
+  // Header — 2 строки: направления + метрики
+  let thead = `<thead><tr><th class="fix dh" rowspan="2" style="text-align:left!important">Период</th>`;
+  dirs.forEach(d => {
+    thead += `<th class="dh" colspan="${MCOLS.length}">${d}</th>`;
+  });
+  thead += `</tr><tr>`;
+  dirs.forEach(() => MCOLS.forEach(m => { thead += `<th>${m}</th>`; }));
+  thead += `</tr></thead>`;
+
+  const typeMap = {
+    'план':'rp','факт':'rf','тренд':'rt','процент':'rpc','итог_нед':'rw','день':'','день_буд':'rb'
+  };
+
+  let tbody = '<tbody>';
+  rows.forEach(r => {
+    const tp  = r['Тип']||'';
+    const cls = typeMap[tp]||'';
+    tbody += `<tr class="${cls}"><td class="fix">${r['Метка']||''}</td>`;
+    dirs.forEach(dir => {
+      MCOLS.forEach(m => {
+        const v = r[`${dir}__${m}`];
+        tbody += `<td>${fmtCell(v, m, tp)}</td>`;
+      });
+    });
+    tbody += `</tr>`;
+  });
+  tbody += '</tbody>';
+
+  wrap.innerHTML = `<table class="mtbl">${thead}${tbody}</table>`;
+}
+
+function fmtCell(v, metric, tp) {
+  if (v===null||v===undefined||v==='') return '<span class="null-v">—</span>';
+  const n = Number(v);
+  if (isNaN(n)) return v;
+
+  if (tp==='процент'||tp==='план'&&false) {
+    // % строка — цветовые метки только для 4 кл. показателей
+    if (n===0&&v!==0) return '<span class="null-v">—</span>';
+    if (metric==='Клики'||metric==='MQL'||metric==='SQL'||metric==='Расход') {
+      const cls2 = cc(n); const clm={'cr':'pct-r','cy':'pct-y','cg':'pct-g','ct':'pct-t','cn':''}[cls2];
+      return `<span class="${clm}" style="font-weight:600">${n}%</span>`;
+    }
+    return '<span class="null-v">—</span>';
+  }
+
+  if (metric==='Расход'||metric==='CPL'||metric==='CPsql'||metric==='CPC') return fmtN(Math.round(n));
+  if (metric==='CR%'||metric==='%БП') return n ? n+'%' : '<span class="null-v">—</span>';
+  return fmtN(n);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MONTHLY CHARTS
+// ══════════════════════════════════════════════════════════════
+function renderMonCharts() {
+  const sp  = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+
+  const wkRows = S.monthly.filter(r => r['Специалист']===tgt && r['Тип']==='итог_нед');
+  const labels  = wkRows.map(r => r['Метка']||'');
+  const sqlData  = wkRows.map(r => Number(r['Общее__SQL'])||0);
+  const cpsqlData= wkRows.map(r => { const v=r['Общее__CPsql']; return v!==null?Number(v):null; });
+
+  redrawChart('cSqlW', {
+    type:'bar', labels, data:sqlData,
+    bg:'rgba(20,184,166,.55)', border:'#14b8a6'
+  });
+  redrawChart('cCpsqlW', {
+    type:'line', labels, data:cpsqlData,
+    bg:'rgba(6,182,212,.12)', border:'#06b6d4', fill:true
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  YEARLY TABLE
+// ══════════════════════════════════════════════════════════════
+function renderYrTable() {
+  const wrap = document.getElementById('yrTblWrap');
+  const dirs  = [...S.settings.dirs, 'Общее'];
+  const sp    = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt   = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+
+  const rows = S.yearly.filter(r => r['Специалист']===tgt);
+  if (!rows.length) { wrap.innerHTML='<div class="empty">Нет данных</div>'; return; }
+
+  const MCOLS = ['Клики','CPC','MQL','CR%','SQL','%БП','Расход','CPL','CPsql'];
+  let thead = `<thead><tr><th class="fix dh" rowspan="2" style="text-align:left!important;color:var(--text2)">Месяц</th>`;
+  dirs.forEach(d => { thead += `<th class="dh" colspan="${MCOLS.length}">${d}</th>`; });
+  thead += `</tr><tr>`;
+  dirs.forEach(() => MCOLS.forEach(m => { thead += `<th>${m}</th>`; }));
+  thead += `</tr></thead>`;
+
+  const typeMap = {'факт':'yf','план':'yp','процент':'ypc','итого':'ytot','среднее':'yavg'};
+  let tbody = '<tbody>';
+  rows.forEach(r => {
+    const tp  = r['Тип']||'';
+    const cls = typeMap[tp]||'';
+    tbody += `<tr class="${cls}"><td class="fix">${r['Месяц']||'—'}</td>`;
+    dirs.forEach(dir => {
+      MCOLS.forEach(m => {
+        const v = r[`${dir}__${m}`];
+        tbody += `<td>${fmtCell(v, m, tp==='процент'?'процент':'')}</td>`;
+      });
+    });
+    tbody += `</tr>`;
+  });
+  tbody += '</tbody>';
+  wrap.innerHTML = `<table class="ytbl">${thead}${tbody}</table>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  YEARLY CHARTS
+// ══════════════════════════════════════════════════════════════
+function renderYrCharts() {
+  const sp   = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt  = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+
+  const sort = r => Number(r['Месяц_номер']||0);
+  const fact = S.yearly.filter(r => r['Специалист']===tgt && r['Тип']==='факт' && sort(r)>0).sort((a,b)=>sort(a)-sort(b));
+  const plan = S.yearly.filter(r => r['Специалист']===tgt && r['Тип']==='план' && sort(r)>0).sort((a,b)=>sort(a)-sort(b));
+
+  const labels  = fact.map(r => MN_SHORT[Number(r['Месяц_номер'])]||r['Месяц']);
+  const sqlF    = fact.map(r => Number(r['Общее__SQL'])||0);
+  const sqlP    = plan.map(r => { const v=r['Общее__SQL']; return v?Number(v):null; });
+  const cpsqlF  = fact.map(r => { const v=r['Общее__CPsql']; return v!==null?Number(v):null; });
+
+  if (CH.cYrSql)    { CH.cYrSql.destroy(); }
+  if (CH.cYrCpsql)  { CH.cYrCpsql.destroy(); }
+
+  const ctx1 = document.getElementById('cYrSql');
+  if (ctx1) {
+    CH.cYrSql = new Chart(ctx1, {
+      type:'bar',
+      data:{labels, datasets:[
+        {label:'Факт', data:sqlF, backgroundColor:'rgba(20,184,166,.55)', borderColor:'#14b8a6', borderWidth:1, borderRadius:4},
+        {label:'План', data:sqlP, type:'line', borderColor:'rgba(6,182,212,.5)', borderDash:[5,4], fill:false, tension:0, pointRadius:3, borderWidth:2, pointBackgroundColor:'#06b6d4'}
+      ]},
+      options:{...chOpts(), plugins:{...chOpts().plugins, legend:{labels:{color:'#7a8aaa',font:{family:'JetBrains Mono',size:10}}}}}
+    });
+  }
+  const ctx2 = document.getElementById('cYrCpsql');
+  if (ctx2) {
+    CH.cYrCpsql = new Chart(ctx2, {
+      type:'line',
+      data:{labels, datasets:[{data:cpsqlF, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,.1)', fill:true, tension:.4, pointBackgroundColor:'#f59e0b', pointRadius:4, borderWidth:2}]},
+      options:chOpts()
+    });
+  }
+}
+
+function redrawChart(id, cfg) {
+  if (CH[id]) { CH[id].destroy(); delete CH[id]; }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  CH[id] = new Chart(ctx, {
+    type: cfg.type,
+    data:{labels:cfg.labels, datasets:[{
+      data:cfg.data, backgroundColor:cfg.bg, borderColor:cfg.border,
+      borderWidth:2, borderRadius:cfg.type==='bar'?5:0,
+      fill:cfg.fill||false, tension:.4,
+      pointBackgroundColor:cfg.border, pointRadius:4
+    }]},
+    options:chOpts()
+  });
+}
+
+function chOpts() {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}, tooltip:{
+      backgroundColor:'#171c2e', borderColor:'#1a2035', borderWidth:1,
+      titleColor:'#7a8aaa', bodyColor:'#dde4f5',
+      titleFont:{family:'JetBrains Mono',size:10}, bodyFont:{family:'JetBrains Mono',size:11}
+    }},
+    scales:{
+      x:{grid:{color:'rgba(26,32,53,.8)'}, ticks:{color:'#3d4d6a',font:{family:'JetBrains Mono',size:10}}},
+      y:{grid:{color:'rgba(26,32,53,.8)'}, ticks:{color:'#3d4d6a',font:{family:'JetBrains Mono',size:10}}}
+    }
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INPUT FORM
+// ══════════════════════════════════════════════════════════════
+function buildInpForm() {
+  const dirs = S.settings.dirs;
+  document.getElementById('inpDirs').innerHTML = dirs.map(dir => `
+    <div class="dir-block" data-dir="${dir}">
+      <div class="dir-lbl">📂 ${dir}</div>
+      <div class="f-grid">
+        <div class="fgrp"><label>Клики</label><input type="number" class="finput" data-f="clicks" min="0" placeholder="0"></div>
+        <div class="fgrp"><label>Расход ₽</label><input type="number" class="finput" data-f="spend" min="0" step="0.01" placeholder="0"></div>
+        <div class="fgrp"><label>Заявки MQL</label><input type="number" class="finput" data-f="mql" min="0" placeholder="0"></div>
+        <div class="fgrp"><label>БП / SQL</label><input type="number" class="finput" data-f="sql" min="0" placeholder="0"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function submitDaily() {
+  const btn  = document.getElementById('submitBtn');
+  const stat = document.getElementById('inpStatus');
+  const date = document.getElementById('inp_date').value;
+  if (!date) { stat.style.color='var(--red)'; stat.textContent='❌ Укажите дату'; return; }
+
+  const entries = [];
+  document.querySelectorAll('#inpDirs .dir-block').forEach(block => {
+    const dir = block.dataset.dir;
+    const c   = Number(block.querySelector('[data-f="clicks"]').value)||0;
+    const sp  = Number(block.querySelector('[data-f="spend"]').value)||0;
+    const m   = Number(block.querySelector('[data-f="mql"]').value)||0;
+    const s   = Number(block.querySelector('[data-f="sql"]').value)||0;
+    if (c||sp||m||s) entries.push({date, spec:SPEC_ID, dir, clicks:c, spend:sp, mql:m, sql:s});
+  });
+
+  if (!entries.length) { stat.style.color='var(--red)'; stat.textContent='❌ Введите хотя бы одно значение'; return; }
+
+  btn.disabled=true; btn.textContent='...'; stat.textContent='';
+  try {
+    const res = await POST({action:'saveDaily', entries});
+    if (res.ok) {
+      stat.style.color='var(--green)'; stat.textContent=`✅ Сохранено ${res.saved} записей`;
+      showToast('Данные сохранены!');
+      clearInpForm();
+      await loadLog();
+    } else throw new Error(res.error);
+  } catch(e) { stat.style.color='var(--red)'; stat.textContent='❌ '+e.message; }
+  finally { btn.disabled=false; btn.textContent='✓ Отправить'; }
+}
+
+function clearInpForm() {
+  document.querySelectorAll('#inpDirs input').forEach(i => i.value='');
+}
+
+function renderLog() {
+  const tbody = document.getElementById('logBody');
+  if (!S.log.length) { tbody.innerHTML='<tr><td colspan="6" class="empty">Нет записей за этот месяц</td></tr>'; return; }
+  tbody.innerHTML = [...S.log].reverse().map(r => `<tr>
+    <td>${fmtDate(r['Дата'])}</td><td>${r['Направление']||'—'}</td>
+    <td>${fmtN(r['Клики'])}</td><td>${fmtM(r['Расход'])}</td>
+    <td>${fmtN(r['MQL'])}</td><td>${fmtN(r['SQL'])}</td>
+  </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PLAN FORM
+// ══════════════════════════════════════════════════════════════
+function buildPlanForm() {
+  if (!IS_MGR) return;
+  const sel = document.getElementById('plan_spec');
+  sel.innerHTML = S.settings.specs
+    .filter(s => s.id!=='manager')
+    .map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+  const now = new Date();
+  document.getElementById('plan_month').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  document.getElementById('planDirFields').innerHTML = S.settings.dirs.map(dir => `
+    <div style="margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:8px">📂 ${dir}</div>
+      <div class="f-grid">
+        <div class="fgrp"><label>Клики</label><input type="number" class="finput" id="pl_${dir.replace(/\s/g,'_')}_c" min="0" placeholder="0"></div>
+        <div class="fgrp"><label>Расход ₽</label><input type="number" class="finput" id="pl_${dir.replace(/\s/g,'_')}_r" min="0" placeholder="0"></div>
+        <div class="fgrp"><label>MQL</label><input type="number" class="finput" id="pl_${dir.replace(/\s/g,'_')}_m" min="0" placeholder="0"></div>
+        <div class="fgrp"><label>SQL/БП</label><input type="number" class="finput" id="pl_${dir.replace(/\s/g,'_')}_s" min="0" placeholder="0"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function submitPlan() {
+  const stat  = document.getElementById('planStatus');
+  const month = document.getElementById('plan_month').value;
+  const spec  = document.getElementById('plan_spec').value;
+  if (!month||!spec) { stat.style.color='var(--red)'; stat.textContent='❌ Выберите месяц и специалиста'; return; }
+
+  const entries = [];
+  S.settings.dirs.forEach(dir => {
+    const key = dir.replace(/\s/g,'_');
+    const c = Number(document.getElementById(`pl_${key}_c`)?.value)||0;
+    const r = Number(document.getElementById(`pl_${key}_r`)?.value)||0;
+    const m = Number(document.getElementById(`pl_${key}_m`)?.value)||0;
+    const s = Number(document.getElementById(`pl_${key}_s`)?.value)||0;
+    if (c||r||m||s) entries.push({month, spec, dir, clicks:c, spend:r, mql:m, sql:s});
+  });
+
+  if (!entries.length) { stat.style.color='var(--red)'; stat.textContent='❌ Введите хотя бы одно направление'; return; }
+
+  try {
+    const res = await POST({action:'savePlan', entries});
+    if (res.ok) {
+      stat.style.color='var(--green)'; stat.textContent='✅ План сохранён';
+      showToast('План сохранён!');
+      renderPlanHistory();
+    } else throw new Error(res.error);
+  } catch(e) { stat.style.color='var(--red)'; stat.textContent='❌ '+e.message; }
+}
+
+async function renderPlanHistory() {
+  try {
+    const res = await GET('getPlanLog', {spec:'manager'});
+    const tbody = document.getElementById('planHistBody');
+    if (!res.rows.length) { tbody.innerHTML='<tr><td colspan="7" class="empty">Нет планов</td></tr>'; return; }
+    tbody.innerHTML = res.rows.map(r => `<tr>
+      <td>${fmtDate(r['Месяц'])}</td><td>${r['Специалист']||'—'}</td><td>${r['Направление']||'—'}</td>
+      <td>${fmtN(r['План_клики'])}</td><td>${fmtM(r['План_расход'])}</td>
+      <td>${fmtN(r['План_MQL'])}</td><td>${fmtN(r['План_SQL'])}</td>
+    </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SPEC TABS
+// ══════════════════════════════════════════════════════════════
+function buildSpecTabs() {
+  const all = [{id:'manager',name:'Все'}, ...S.settings.specs.filter(s=>s.id!=='manager')];
+  ['specTabsMon','specTabsYr'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = all.map(s =>
+      `<button class="stab ${S.selSpec===s.id?'on':''}" onclick="selectSpec('${s.id}')">${s.name}</button>`
+    ).join('');
+  });
+}
+
+async function selectSpec(id) {
+  S.selSpec = id;
+  buildSpecTabs();
+  const active = document.querySelector('.tab.on')?.textContent.toLowerCase();
+  if (active?.includes('месяц')) await loadMonthly();
+  if (active?.includes('год'))   await loadYearly();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════
+async function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('tab-'+tab).classList.add('on');
+  if (tab==='monthly') await loadMonthly();
+  if (tab==='yearly')  await loadYearly();
+  if (tab==='input')   await loadLog();
+  if (tab==='plan')    await renderPlanHistory();
+}
+
+async function prevMonth() {
+  S.month--; if (S.month<1){S.month=12;S.year--;}
+  await loadMonthly(); await loadLog();
+}
+async function nextMonth() {
+  S.month++; if (S.month>12){S.month=1;S.year++;}
+  await loadMonthly(); await loadLog();
+}
+
+function updateMonLabel() {
+  document.getElementById('monLabel').textContent = MN_RU[S.month]+' '+S.year;
+}
+
+async function refreshData() {
+  const active = document.querySelector('.tab.on')?.textContent;
+  if (active?.includes('Месяц')) await loadMonthly();
+  if (active?.includes('Год'))   await loadYearly();
+  if (active?.includes('Ввод'))  await loadLog();
+  showToast('Обновлено');
+}
+
+async function triggerRebuild() {
+  load('Пересчёт данных...');
+  try {
+    const res = await POST({action:'rebuildAll'});
+    if (res.ok) { showToast('Пересчёт завершён!'); await loadMonthly(); }
+    else throw new Error(res.error);
+  } catch(e) { showToast('Ошибка: '+e.message, true); }
+  finally { unload(); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════════════
+function mkey(y,m) { return `${y}-${String(m).padStart(2,'0')}`; }
+function toISODate(d) { return d.toISOString().slice(0,10); }
+
+function cc(pct) {
+  if (pct===null||pct===undefined) return 'cn';
+  if (pct>=100) return 'ct'; if (pct>=80) return 'cg';
+  if (pct>=50)  return 'cy'; return 'cr';
+}
+function pctColor(pct) {
+  return {ct:'#14b8a6',cg:'#10b981',cy:'#f59e0b',cr:'#ef4444',cn:'#3d4d6a'}[cc(pct)];
+}
+function fmtN(n) {
+  if (n===null||n===undefined) return '—';
+  return Math.round(Number(n)).toLocaleString('ru');
+}
+function fmtM(n) {
+  if (n===null||n===undefined) return '—';
+  return Math.round(Number(n)).toLocaleString('ru')+' ₽';
+}
+function fmtDate(v) {
+  if (!v) return '—';
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4);
+  if (/^\d{4}-\d{2}$/.test(s)) return s.slice(5)+'.'+s.slice(0,4);
+  return s;
+}
+
+function load(txt) {
+  document.getElementById('loadTxt').textContent = txt||'Загрузка...';
+  document.getElementById('overlay').style.display='flex';
+}
+function unload() { document.getElementById('overlay').style.display='none'; }
+function showToast(msg, err) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.className='toast'+(err?' err':'');
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SETUP CHECK
+// ══════════════════════════════════════════════════════════════
+if (SCRIPT_URL==='YOUR_APPS_SCRIPT_WEB_APP_URL_HERE') {
+  document.getElementById('overlay').innerHTML = `
+    <div style="text-align:center;max-width:480px;padding:28px">
+      <div style="font-family:JetBrains Mono;font-size:20px;color:#ef4444;margin-bottom:14px">⚠ Настройте дашборд</div>
+      <div style="font-family:JetBrains Mono;font-size:12px;color:#7a8aaa;line-height:1.9">
+        Откройте <strong style="color:#dde4f5">dashboard.html</strong> в редакторе<br>
+        и замените в строке с <code style="color:#06b6d4">SCRIPT_URL</code>:<br><br>
+        <code style="background:#111520;padding:7px 12px;border-radius:5px;color:#06b6d4;display:block;margin:6px 0">
+          'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE'
+        </code><br>
+        на URL вашего Apps Script Web App.<br><br>
+        <span style="color:#3d4d6a;font-size:10px">Подробнее — в README.md</span>
+      </div>
+    </div>`;
+} else { init(); }
+</script>
+</body>
+</html>
