@@ -505,7 +505,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 // ══════════════════════════════════════════════════════════════
 //  ★  CONFIG — замените URL после деплоя Apps Script
 // ══════════════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwVVVIoveChSjPQz_JvOJ5gnimub_GT5fkQXjFsSNEQt4aVWUUGIJlneRviJx9WTWr6/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxFITUpPwjzonzEf9CvmNUU34aVHEaulOJDXUWuhOerQuaC1F4KN1by_mHh2JoryOro/exec';
 
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -534,6 +534,7 @@ let S = {
 let CH = {};
 let YR_SHOW_PLAN = false;
 let gaugeChart = null;
+let WEEK_SEL = { a: null, b: null }; // { mk, weekNum, label } для каждого слота
 
 // ══════════════════════════════════════════════════════════════
 //  THEME
@@ -904,6 +905,80 @@ function drawGauge(pct) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  WEEK COMPARISON — сбор всех доступных недель
+// ══════════════════════════════════════════════════════════════
+
+// Собирает все завершённые недели из кэша за последние N месяцев
+// Возвращает массив { mk, weekNum, label, fullLabel, row } отсортированный хронологически
+async function collectAllWeeks(tgt) {
+  const curMk  = mkey(S.year, S.month);
+  const today  = new Date();
+  const sp     = IS_MGR ? S.selSpec : SPEC_ID;
+
+  // Определяем текущую активную (незавершённую) неделю
+  const todayDayRow = S.monthly.find(r =>
+    r['Специалист'] === tgt &&
+    (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
+    r['Месяц'] === curMk &&
+    r['Метка'] === (String(today.getDate()).padStart(2,'0') + '.' + String(today.getMonth()+1).padStart(2,'0'))
+  );
+  const curWeekNum = todayDayRow ? Number(todayDayRow['Неделя']||0) : 0;
+
+  // Собираем источники данных: текущий месяц + до 3 предыдущих из кэша
+  const sources = []; // { mk, rows }
+
+  // Текущий месяц — данные уже в S.monthly
+  sources.push({ mk: curMk, rows: S.monthly });
+
+  // Предыдущие месяцы — ищем в кэше, подгружаем если нет
+  for (let i = 1; i <= 3; i++) {
+    let pm = S.month - i, py = S.year;
+    while (pm < 1) { pm += 12; py--; }
+    const pmk = mkey(py, pm);
+    const key = cacheKey(sp, pmk);
+    let cached = cacheGet(key);
+    if (!cached) {
+      try {
+        const res = await GET('getMonthBundle', { month: pmk, spec: sp });
+        cached = { kpi: res.kpi||[], monthly: res.monthly||[] };
+        cacheSet(key, cached);
+      } catch(_) { break; }
+    }
+    if (cached.monthly && cached.monthly.length) {
+      sources.push({ mk: pmk, rows: cached.monthly });
+    }
+  }
+
+  // Извлекаем завершённые итог_нед из всех источников
+  const allWeeks = [];
+  sources.forEach(src => {
+    src.rows
+      .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
+      .forEach(r => {
+        const rowMk = String(r['Месяц']||'');
+        const rowW  = Number(r['Неделя']||0);
+        // Пропускаем текущую незавершённую неделю
+        if (rowMk === curMk && rowW >= curWeekNum) return;
+        const mn = Number(rowMk.slice(5));
+        const fullLabel = `Нед.${rowW} ${MN_SHORT[mn] || rowMk}`;
+        allWeeks.push({ mk: rowMk, weekNum: rowW, label: r['Метка']||`Нед.${rowW}`, fullLabel, row: r });
+      });
+  });
+
+  // Сортируем хронологически и дедуплицируем
+  allWeeks.sort((a, b) => {
+    if (a.mk !== b.mk) return a.mk.localeCompare(b.mk);
+    return a.weekNum - b.weekNum;
+  });
+  const seen = new Set();
+  return allWeeks.filter(w => {
+    const k = `${w.mk}|${w.weekNum}`;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
 //  WEEK COMPARISON — toggle
 // ══════════════════════════════════════════════════════════════
 let WEEK_CMP_VISIBLE = true;
@@ -921,112 +996,71 @@ async function renderWeekComparison() {
   const sp  = IS_MGR ? S.selSpec : SPEC_ID;
   const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
 
-  // Собираем недели из текущего месяца
-  const curMk = mkey(S.year, S.month);
-  const today = new Date();
+  block.innerHTML = '<div class="empty">Загрузка недель...</div>';
+  const allWeeks = await collectAllWeeks(tgt);
 
-  // Определяем текущую активную неделю
-  const todayDayRow = S.monthly.find(r =>
-    r['Специалист'] === tgt &&
-    (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
-    r['Месяц'] === curMk &&
-    r['Метка'] === (String(today.getDate()).padStart(2,'0') + '.' + String(today.getMonth()+1).padStart(2,'0'))
-  );
-  const curWeekNum = todayDayRow ? Number(todayDayRow['Неделя']||0) : 0;
-
-  // Фильтруем завершённые недели текущего месяца
-  let weekRows = S.monthly
-    .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
-    .filter(r => {
-      const rowMk = String(r['Месяц']||'');
-      const rowW  = Number(r['Неделя']||0);
-      if (rowMk < curMk) return true;
-      if (rowMk === curMk && rowW < curWeekNum) return true;
-      return false;
-    })
-    .sort((a,b) => {
-      const ma = String(a['Месяц']||''), mb = String(b['Месяц']||'');
-      if (ma !== mb) return ma.localeCompare(mb);
-      return Number(a['Неделя']||0) - Number(b['Неделя']||0);
-    });
-
-  // Если завершённых недель < 2 — нужно подгрузить предыдущий месяц
-  if (weekRows.length < 2) {
-    let pm = S.month - 1, py = S.year;
-    if (pm < 1) { pm = 12; py--; }
-    const prevMk = mkey(py, pm);
-
-    // Проверяем кэш для предыдущего месяца
-    if (!S.cache) S.cache = {};
-    const prevKey = cacheKey(IS_MGR ? S.selSpec : SPEC_ID, prevMk);
-    const prevCached = cacheGet(prevKey);
-
-    if (prevCached) {
-      const prevWeeks = (prevCached.monthly||[])
-        .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
-        .sort((a,b) => Number(a['Неделя']||0) - Number(b['Неделя']||0));
-      weekRows = [...prevWeeks, ...weekRows];
-    } else {
-      block.innerHTML = '<div class="empty">Загрузка данных предыдущего месяца...</div>';
-      try {
-        const sp2 = IS_MGR ? S.selSpec : SPEC_ID;
-        const res = await GET('getMonthBundle', { month: prevMk, spec: sp2 });
-        const bundleData = { kpi: res.kpi||[], monthly: res.monthly||[] };
-        cacheSet(prevKey, bundleData);
-        const prevWeeks = (bundleData.monthly||[])
-          .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
-          .sort((a,b) => Number(a['Неделя']||0) - Number(b['Неделя']||0));
-        weekRows = [...prevWeeks, ...weekRows];
-      } catch(e) {
-        block.innerHTML = '<div class="empty">Не удалось загрузить предыдущий месяц</div>';
-        return;
-      }
-    }
-  }
-
-  if (weekRows.length < 2) {
+  if (allWeeks.length < 2) {
     block.innerHTML = '<div class="empty">Недостаточно данных — нужно минимум 2 завершённые недели</div>';
     return;
   }
 
-  // Берём последние 2
-  const wA = weekRows[weekRows.length - 2];
-  const wB = weekRows[weekRows.length - 1];
+  // Автовыбор: последние 2 завершённые, если выбор ещё не сделан или недоступен
+  const validKeys = new Set(allWeeks.map(w => `${w.mk}|${w.weekNum}`));
+  const selAKey = WEEK_SEL.a ? `${WEEK_SEL.a.mk}|${WEEK_SEL.a.weekNum}` : null;
+  const selBKey = WEEK_SEL.b ? `${WEEK_SEL.b.mk}|${WEEK_SEL.b.weekNum}` : null;
 
-  const mA = String(wA['Месяц']||''), mB = String(wB['Месяц']||'');
-  const crossMonth = mA !== mB;
-  const lblA = wA['Метка'] || `Нед.${wA['Неделя']}`;
-  const lblB = wB['Метка'] || `Нед.${wB['Неделя']}`;
-  const fullLblA = crossMonth ? `${lblA} (${MN_SHORT[Number(mA.slice(5))]})` : lblA;
-  const fullLblB = crossMonth ? `${lblB} (${MN_SHORT[Number(mB.slice(5))]})` : lblB;
+  if (!selAKey || !validKeys.has(selAKey)) WEEK_SEL.a = allWeeks[allWeeks.length - 2];
+  if (!selBKey || !validKeys.has(selBKey)) WEEK_SEL.b = allWeeks[allWeeks.length - 1];
+
+  renderWeekCmpContent(allWeeks, tgt);
+}
+
+function renderWeekCmpContent(allWeeks, tgt) {
+  const block = document.getElementById('weekCmpBlock');
+  const wA = allWeeks.find(w => w.mk === WEEK_SEL.a?.mk && w.weekNum === WEEK_SEL.a?.weekNum) || allWeeks[allWeeks.length - 2];
+  const wB = allWeeks.find(w => w.mk === WEEK_SEL.b?.mk && w.weekNum === WEEK_SEL.b?.weekNum) || allWeeks[allWeeks.length - 1];
+
+  // Опции для селекторов
+  const opts = allWeeks.map(w =>
+    `<option value="${w.mk}|${w.weekNum}" ${w.mk===wA.mk&&w.weekNum===wA.weekNum?'selected':''}>${w.fullLabel}</option>`
+  ).join('');
+  const optsB = allWeeks.map(w =>
+    `<option value="${w.mk}|${w.weekNum}" ${w.mk===wB.mk&&w.weekNum===wB.weekNum?'selected':''}>${w.fullLabel}</option>`
+  ).join('');
 
   const displayDirs = IS_MGR ? [...S.settings.dirs, 'Общее'] : ['Общее'];
 
-  let html = `<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <div class="week-label week-label-a">◀ ${fullLblA}</div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">vs</div>
-    <div class="week-label week-label-b">▶ ${fullLblB}</div>
+  let html = `
+  <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="week-label week-label-a" style="padding:3px 8px">◀</span>
+      <select class="fselect" style="min-width:130px;font-size:11px;padding:4px 8px" onchange="onWeekSelChange('a',this.value)">${opts}</select>
+    </div>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:0 2px">vs</span>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select class="fselect" style="min-width:130px;font-size:11px;padding:4px 8px" onchange="onWeekSelChange('b',this.value)">${optsB}</select>
+      <span class="week-label week-label-b" style="padding:3px 8px">▶</span>
+    </div>
   </div>`;
 
   html += `<div class="week-cmp-grid">`;
   displayDirs.forEach((dir, di) => {
     const dirColor = DIR_COLORS[di % DIR_COLORS.length];
     const mKeys = [
-      {n:'Клики',   k:`${dir}__Клики`,   type:'qty'},
-      {n:'CPC',     k:`${dir}__CPC`,     type:'cost'},
-      {n:'Заявки',  k:`${dir}__MQL`,     type:'qty'},
-      {n:'CR%',     k:`${dir}__CR%`,     type:'conv'},
-      {n:'БП',      k:`${dir}__SQL`,     type:'qty'},
-      {n:'%БП',     k:`${dir}__%БП`,    type:'conv'},
-      {n:'Расход',  k:`${dir}__Расход`,  type:'neutral'},
-      {n:'CPL',     k:`${dir}__CPL`,     type:'cost'},
-      {n:'Цена БП', k:`${dir}__CPsql`,   type:'cost'},
+      {n:'Клики',   k:`${dir}__Клики`,  type:'qty'},
+      {n:'CPC',     k:`${dir}__CPC`,    type:'cost'},
+      {n:'Заявки',  k:`${dir}__MQL`,    type:'qty'},
+      {n:'CR%',     k:`${dir}__CR%`,    type:'conv'},
+      {n:'БП',      k:`${dir}__SQL`,    type:'qty'},
+      {n:'%БП',     k:`${dir}__%БП`,   type:'conv'},
+      {n:'Расход',  k:`${dir}__Расход`, type:'neutral'},
+      {n:'CPL',     k:`${dir}__CPL`,    type:'cost'},
+      {n:'Цена БП', k:`${dir}__CPsql`,  type:'cost'},
     ];
-    html += `<div>
-      <div class="week-col-title" style="color:${dirColor}">📂 ${dir}</div>`;
+    html += `<div><div class="week-col-title" style="color:${dirColor}">📂 ${dir}</div>`;
     mKeys.forEach(m => {
-      const va = Number(wA[m.k])||0;
-      const vb = Number(wB[m.k])||0;
+      const va = Number(wA.row[m.k])||0;
+      const vb = Number(wB.row[m.k])||0;
       const diff = vb - va;
       const pct  = va ? ((diff/va)*100).toFixed(1) : null;
       let arrow = '→', cls = 'neu';
@@ -1050,6 +1084,72 @@ async function renderWeekComparison() {
   });
   html += `</div>`;
   block.innerHTML = html;
+}
+
+function onWeekSelChange(slot, val) {
+  const [mk, weekNum] = val.split('|');
+  const sp  = IS_MGR ? S.selSpec : SPEC_ID;
+  const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+  // Найти row из кэша
+  const key = cacheKey(sp, mk);
+  const cached = cacheGet(key);
+  const sourceRows = mk === mkey(S.year, S.month)
+    ? S.monthly
+    : (cached ? cached.monthly : []);
+  const row = sourceRows.find(r =>
+    r['Специалист'] === tgt &&
+    r['Тип'] === 'итог_нед' &&
+    String(r['Месяц']||'') === mk &&
+    Number(r['Неделя']||0) === Number(weekNum)
+  );
+  if (!row) return;
+  const mn = Number(mk.slice(5));
+  WEEK_SEL[slot] = { mk, weekNum: Number(weekNum), label: row['Метка']||`Нед.${weekNum}`, fullLabel: `Нед.${weekNum} ${MN_SHORT[mn]||mk}`, row };
+
+  // Пересобрать allWeeks из кэша синхронно (данные уже загружены) и перерисовать
+  const allWeeksSync = collectAllWeeksSync(tgt);
+  if (allWeeksSync.length >= 2) renderWeekCmpContent(allWeeksSync, tgt);
+}
+
+function collectAllWeeksSync(tgt) {
+  const curMk = mkey(S.year, S.month);
+  const today = new Date();
+  const sp    = IS_MGR ? S.selSpec : SPEC_ID;
+  const todayDayRow = S.monthly.find(r =>
+    r['Специалист'] === tgt &&
+    (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
+    r['Месяц'] === curMk &&
+    r['Метка'] === (String(today.getDate()).padStart(2,'0') + '.' + String(today.getMonth()+1).padStart(2,'0'))
+  );
+  const curWeekNum = todayDayRow ? Number(todayDayRow['Неделя']||0) : 0;
+
+  const sources = [{ mk: curMk, rows: S.monthly }];
+  for (let i = 1; i <= 3; i++) {
+    let pm = S.month - i, py = S.year;
+    while (pm < 1) { pm += 12; py--; }
+    const pmk = mkey(py, pm);
+    const cached = cacheGet(cacheKey(sp, pmk));
+    if (cached && cached.monthly) sources.push({ mk: pmk, rows: cached.monthly });
+  }
+
+  const allWeeks = [];
+  const seen = new Set();
+  sources.forEach(src => {
+    src.rows
+      .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
+      .forEach(r => {
+        const rowMk = String(r['Месяц']||'');
+        const rowW  = Number(r['Неделя']||0);
+        if (rowMk === curMk && rowW >= curWeekNum) return;
+        const k = `${rowMk}|${rowW}`;
+        if (seen.has(k)) return;
+        seen.add(k);
+        const mn = Number(rowMk.slice(5));
+        allWeeks.push({ mk: rowMk, weekNum: rowW, label: r['Метка']||`Нед.${rowW}`, fullLabel: `Нед.${rowW} ${MN_SHORT[mn]||rowMk}`, row: r });
+      });
+  });
+  allWeeks.sort((a, b) => a.mk !== b.mk ? a.mk.localeCompare(b.mk) : a.weekNum - b.weekNum);
+  return allWeeks;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1485,6 +1585,7 @@ function buildSpecTabs() {
 
 async function selectSpec(id) {
   S.selSpec = id;
+  WEEK_SEL = { a: null, b: null };
   buildSpecTabs();
   const active = document.querySelector('.tab.on')?.textContent;
   if (active?.includes('Месяц')) await loadMonthly();
@@ -1521,6 +1622,7 @@ async function onMonthPicked(val) {
   if (!val) return;
   const [y, m] = val.split('-').map(Number);
   S.year = y; S.month = m;
+  WEEK_SEL = { a: null, b: null };
   document.getElementById('monPicker').style.pointerEvents = 'none';
   await loadMonthly();
   await loadLog();
@@ -1528,10 +1630,12 @@ async function onMonthPicked(val) {
 
 async function prevMonth() {
   S.month--; if (S.month<1){S.month=12;S.year--;}
+  WEEK_SEL = { a: null, b: null };
   await loadMonthly(); await loadLog();
 }
 async function nextMonth() {
   S.month++; if (S.month>12){S.month=1;S.year++;}
+  WEEK_SEL = { a: null, b: null };
   await loadMonthly(); await loadLog();
 }
 
