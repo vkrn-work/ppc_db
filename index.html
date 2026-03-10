@@ -30,6 +30,8 @@
   --red-bg:    rgba(255,106,89,.13);
   --teal:      #52CCC2;
   --teal-bg:   rgba(82,204,194,.13);
+  --bright-green: #4ade80;
+  --bright-green-bg: rgba(74,222,128,.13);
 }
 
 /* ═══════ DARK THEME ═══════ */
@@ -132,7 +134,8 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 .mon-nav { display: flex; align-items: center; gap: 8px; }
 .nav-btn { width: 26px; height: 26px; border-radius: var(--r-sm); background: var(--bg2); border: 1px solid var(--border2); color: var(--text2); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all .14s; }
 .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
-.mon-label { font-family: var(--mono); font-size: 14px; font-weight: 600; min-width: 140px; text-align: center; }
+.mon-label { font-family: var(--mono); font-size: 14px; font-weight: 600; min-width: 140px; text-align: center; border-radius: var(--r-sm); padding: 2px 6px; transition: background .14s; }
+.mon-label:hover { background: var(--accent-bg); color: var(--accent); }
 .spec-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
 .stab { font-family: var(--mono); font-size: 10px; padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border2); background: transparent; color: var(--text3); cursor: pointer; transition: all .14s; }
 .stab:hover { color: var(--text2); }
@@ -179,7 +182,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 .pg-r { color: var(--red);   background: var(--red-bg); }
 .pg-y { color: var(--yellow); background: var(--yellow-bg); }
 .pg-g { color: var(--green); background: var(--green-bg); }
-.pg-t { color: var(--teal);  background: var(--teal-bg); }
+.pg-t { color: var(--bright-green); background: var(--bright-green-bg); }
 .pg-n { color: var(--text3); background: var(--bg3); }
 
 /* Progress bar in table */
@@ -333,7 +336,10 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
   <div class="toolbar">
     <div class="mon-nav">
       <button class="nav-btn" onclick="prevMonth()">‹</button>
-      <div class="mon-label" id="monLabel">—</div>
+      <div style="position:relative">
+        <div class="mon-label" id="monLabel" onclick="openMonthPicker()" title="Выбрать месяц" style="cursor:pointer;user-select:none" title="Кликните для выбора месяца">—</div>
+        <input type="month" id="monPicker" style="position:absolute;top:0;left:0;opacity:0;width:100%;height:100%;cursor:pointer;pointer-events:none" onchange="onMonthPicked(this.value)">
+      </div>
       <button class="nav-btn" onclick="nextMonth()">›</button>
     </div>
     <div class="spec-tabs mgr" id="specTabsMon" style="display:none"></div>
@@ -499,7 +505,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 // ══════════════════════════════════════════════════════════════
 //  ★  CONFIG — замените URL после деплоя Apps Script
 // ══════════════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwoL6NgvaaTdG-d0xpPXBuBlFYtj2PCcBQ3SiQRx3vs_p72j42-gJ4_E56mgaqow1lR/exec';
+const SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -522,7 +528,8 @@ let S = {
   settings: { specs:[], dirs:[] },
   year: 2026, month: new Date().getMonth()+1,
   selSpec: SPEC_ID,
-  kpi:[], monthly:[], yearly:[], log:[]
+  kpi:[], monthly:[], yearly:[], log:[],
+  cache: {}
 };
 let CH = {};
 let YR_SHOW_PLAN = false;
@@ -586,73 +593,165 @@ async function POST(body) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  INIT
+//  CACHE — ключ: "spec|mk", значение: { kpi, monthly, ts }
+//  yearly кэшируется по ключу "spec|yearly"
+// ══════════════════════════════════════════════════════════════
+const CACHE_TTL = 5 * 60 * 1000; // 5 минут
+
+function cacheKey(spec, mk)   { return `${spec}|${mk}`; }
+function cacheKeyYr(spec)     { return `${spec}|yearly`; }
+
+function cacheGet(key) {
+  const entry = S.cache[key];
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) { delete S.cache[key]; return null; }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  S.cache[key] = { data, ts: Date.now() };
+}
+
+// Инвалидировать весь кэш (после rebuildAll / saveDaily / savePlan)
+function cacheInvalidate() {
+  S.cache = {};
+}
+
+// Фоновая загрузка месяца в кэш (не показывает лоадер)
+async function prefetchMonth(year, month, spec) {
+  const mk  = mkey(year, month);
+  const key = cacheKey(spec, mk);
+  if (cacheGet(key)) return; // уже есть
+  try {
+    const res = await GET('getMonthBundle', { month: mk, spec });
+    cacheSet(key, { kpi: res.kpi||[], monthly: res.monthly||[] });
+  } catch(_) {} // тихий фейл — не мешаем основному потоку
+}
+
+// Запускаем prefetch соседних месяцев после того как основной запрос завершён
+function schedulePrefetch(spec) {
+  let pm = S.month - 1, py = S.year;
+  if (pm < 1)  { pm = 12; py--; }
+  let nm = S.month + 1, ny = S.year;
+  if (nm > 12) { nm = 1;  ny++; }
+
+  // Небольшая задержка чтобы не конкурировать с рендером
+  setTimeout(() => prefetchMonth(py, pm, spec), 300);
+  setTimeout(() => prefetchMonth(ny, nm, spec), 700);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INIT — один запрос getInitBundle вместо трёх
 // ══════════════════════════════════════════════════════════════
 async function init() {
   initTheme();
-  load('Загрузка настроек...');
+  load('Загрузка...');
   try {
-    const s = await GET('getSettings');
-    S.settings = s;
+    S.month = new Date().getMonth() + 1;
+    S.year  = new Date().getFullYear();
+    const mk = mkey(S.year, S.month);
+    const sp = IS_MGR ? S.selSpec : SPEC_ID;
+
+    // Один запрос — получаем settings + kpi + monthly + yearly
+    const bundle = await GET('getInitBundle', { month: mk, spec: sp });
+
+    S.settings = bundle.settings;
+    S.kpi      = bundle.kpi     || [];
+    S.monthly  = bundle.monthly || [];
+    S.yearly   = bundle.yearly  || [];
+
+    // Кладём месячные данные в кэш сразу
+    cacheSet(cacheKey(sp, mk), { kpi: S.kpi, monthly: S.monthly });
+    cacheSet(cacheKeyYr(sp),   S.yearly);
+
     document.getElementById('hDate').textContent =
-      new Date().toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',month:'long'});
+      new Date().toLocaleDateString('ru-RU', { weekday:'short', day:'numeric', month:'long' });
 
     if (!IS_MGR) {
-      const sp = s.specs.find(x => x.id===SPEC_ID);
-      document.getElementById('hSpec').textContent = sp ? sp.name : SPEC_ID;
+      const spObj = S.settings.specs.find(x => x.id === SPEC_ID);
+      document.getElementById('hSpec').textContent = spObj ? spObj.name : SPEC_ID;
       document.getElementById('hSpec').style.display = '';
       document.getElementById('hTitle').textContent  = 'Мой дашборд';
     } else {
       document.getElementById('rebuildBtn').style.display = '';
-      document.querySelectorAll('.mgr').forEach(el => el.style.display='');
+      document.querySelectorAll('.mgr').forEach(el => el.style.display = '');
       buildSpecTabs();
     }
 
     buildInpForm(); buildPlanForm();
     document.getElementById('inp_date').value = toISODate(new Date());
-    S.month = new Date().getMonth()+1;
-    S.year  = new Date().getFullYear();
 
-    await loadMonthly();
+    updateMonLabel();
+    renderKpi();
+    await renderWeekComparison();
+    renderMonTable();
+    renderMonCharts();
+
     await loadLog();
+
+    // Фоновый prefetch соседних месяцев
+    schedulePrefetch(sp);
+
   } catch(e) {
-    showToast('Ошибка загрузки: '+e.message, true);
+    showToast('Ошибка загрузки: ' + e.message, true);
     console.error(e);
   } finally { unload(); }
 }
 
 // ══════════════════════════════════════════════════════════════
-//  LOAD
+//  LOAD — с кэшем и prefetch
 // ══════════════════════════════════════════════════════════════
 async function loadMonthly() {
-  load('Загрузка данных месяца...');
+  load('Загрузка...');
   try {
-    const mk = mkey(S.year, S.month);
-    const sp = IS_MGR ? S.selSpec : SPEC_ID;
-    const [k, m] = await Promise.all([
-      GET('getKpi',     {month:mk, spec:sp}),
-      GET('getMonthly', {month:mk, spec:sp})
-    ]);
-    S.kpi     = k.rows||[];
-    S.monthly = m.rows||[];
+    const mk  = mkey(S.year, S.month);
+    const sp  = IS_MGR ? S.selSpec : SPEC_ID;
+    const key = cacheKey(sp, mk);
+
+    // Проверяем кэш
+    const cached = cacheGet(key);
+    if (cached) {
+      S.kpi     = cached.kpi;
+      S.monthly = cached.monthly;
+    } else {
+      // Один запрос вместо двух
+      const res = await GET('getMonthBundle', { month: mk, spec: sp });
+      S.kpi     = res.kpi     || [];
+      S.monthly = res.monthly || [];
+      cacheSet(key, { kpi: S.kpi, monthly: S.monthly });
+    }
+
     updateMonLabel();
     renderKpi();
-    renderWeekComparison();
+    await renderWeekComparison();
     renderMonTable();
     renderMonCharts();
-  } catch(e) { showToast('Ошибка: '+e.message, true); console.error(e); }
+
+    // Prefetch соседних месяцев фоново
+    schedulePrefetch(sp);
+
+  } catch(e) { showToast('Ошибка: ' + e.message, true); console.error(e); }
   finally { unload(); }
 }
 
 async function loadYearly() {
-  load('Загрузка годовых данных...');
+  load('Загрузка...');
   try {
     const sp  = IS_MGR ? S.selSpec : SPEC_ID;
-    const res = await GET('getYearly', {spec:sp});
-    S.yearly  = res.rows||[];
+    const key = cacheKeyYr(sp);
+
+    const cached = cacheGet(key);
+    if (cached) {
+      S.yearly = cached;
+    } else {
+      const res = await GET('getYearly', { spec: sp });
+      S.yearly  = res.rows || [];
+      cacheSet(key, S.yearly);
+    }
+
     renderYrTable();
     renderYrCharts();
-  } catch(e) { showToast('Ошибка: '+e.message, true); }
+  } catch(e) { showToast('Ошибка: ' + e.message, true); }
   finally { unload(); }
 }
 
@@ -737,7 +836,7 @@ function renderKpi() {
   const sqlPct = row['SQL_пвып'];
   drawGauge(sqlPct);
   const gc = ccl(sqlPct);
-  const statusTxt = { cr:'< 50% — нужно ускориться', cy:'50–80% — следить за темпом', cg:'80–100% — хороший темп', ct:'≥ 100% — план перевыполнится', cn:'нет данных плана' }[gc];
+  const statusTxt = { cr:'< 80% — нужно ускориться', cy:'80–90% — следить за темпом', cg:'90–100% — хороший темп', ct:'≥ 100% — супер темп! 🚀', cn:'нет данных плана' }[gc];
   const el = document.getElementById('gStatus');
   el.textContent = statusTxt;
   el.className = 'g-status pct-badge pg-'+gc.replace('c','');
@@ -749,7 +848,7 @@ function renderKpi() {
     {n:'Заявки MQL', fk:'MQL_факт', tk:'MQL_тренд',   pk:'MQL_план',   pctk:'MQL_пвып',   fmt:fmtN},
     {n:'БП / SQL', fk:'SQL_факт',    tk:'SQL_тренд',    pk:'SQL_план',    pctk:'SQL_пвып',    fmt:fmtN},
   ];
-  const fillColors = {cr:'var(--red)',cy:'var(--yellow)',cg:'var(--green)',ct:'var(--teal)',cn:'var(--border2)'};
+  const fillColors = {cr:'var(--red)',cy:'var(--yellow)',cg:'var(--teal)',ct:'var(--bright-green)',cn:'var(--border2)'};
 
   document.getElementById('kpiMetricsBody').innerHTML = metrics.map(m => {
     const f=row[m.fk], t=row[m.tk], p=row[m.pk], pct=row[m.pctk];
@@ -817,75 +916,87 @@ function toggleWeekCmp() {
 // ══════════════════════════════════════════════════════════════
 //  WEEK COMPARISON — render
 // ══════════════════════════════════════════════════════════════
-function renderWeekComparison() {
+async function renderWeekComparison() {
   const block = document.getElementById('weekCmpBlock');
   const sp  = IS_MGR ? S.selSpec : SPEC_ID;
   const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
 
-  // Собираем все итоговые строки недель из ВСЕХ загруженных месяцев.
-  // S.monthly содержит данные текущего просматриваемого месяца.
-  // Для сравнения нам нужны "итог_нед" — отбираем все и сортируем по дате
-  // Формат Метка = "Итог нед.N", Неделя = N, Месяц = "2026-MM"
-  const weekRows = S.monthly
+  // Собираем недели из текущего месяца
+  const curMk = mkey(S.year, S.month);
+  const today = new Date();
+
+  // Определяем текущую активную неделю
+  const todayDayRow = S.monthly.find(r =>
+    r['Специалист'] === tgt &&
+    (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
+    r['Месяц'] === curMk &&
+    r['Метка'] === (String(today.getDate()).padStart(2,'0') + '.' + String(today.getMonth()+1).padStart(2,'0'))
+  );
+  const curWeekNum = todayDayRow ? Number(todayDayRow['Неделя']||0) : 0;
+
+  // Фильтруем завершённые недели текущего месяца
+  let weekRows = S.monthly
     .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
+    .filter(r => {
+      const rowMk = String(r['Месяц']||'');
+      const rowW  = Number(r['Неделя']||0);
+      if (rowMk < curMk) return true;
+      if (rowMk === curMk && rowW < curWeekNum) return true;
+      return false;
+    })
     .sort((a,b) => {
-      // Сортируем по месяцу, потом по номеру недели
       const ma = String(a['Месяц']||''), mb = String(b['Месяц']||'');
       if (ma !== mb) return ma.localeCompare(mb);
       return Number(a['Неделя']||0) - Number(b['Неделя']||0);
     });
 
-  // Нужны последние 2 ПОЛНЫЕ недели относительно сегодня.
-  // "Полная" — неделя у которой все дни уже прошли.
-  // Определяем конец каждой недели по данным в monthly: берём максимальную дату
-  // через поле "Отработано" (MTD) и Неделя. Но проще: неделя "полная" если
-  // следующая отчётная неделя уже началась ИЛИ мы в следующем месяце.
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0,10);
+  // Если завершённых недель < 2 — нужно подгрузить предыдущий месяц
+  if (weekRows.length < 2) {
+    let pm = S.month - 1, py = S.year;
+    if (pm < 1) { pm = 12; py--; }
+    const prevMk = mkey(py, pm);
 
-  // Фильтруем только завершённые недели:
-  // Неделя завершена если существует строка следующей недели (или следующего месяца)
-  // ИЛИ если мы уже перешли в следующий месяц.
-  // Простой подход: итог_нед считается завершённым если его месяц+неделя
-  // не является "текущей" незавершённой неделей.
+    // Проверяем кэш для предыдущего месяца
+    if (!S.cache) S.cache = {};
+    const prevKey = cacheKey(IS_MGR ? S.selSpec : SPEC_ID, prevMk);
+    const prevCached = cacheGet(prevKey);
 
-  // Текущая неделя = та, в которую попадает сегодня
-  const curMk = `${S.year}-${String(S.month).padStart(2,'0')}`;
+    if (prevCached) {
+      const prevWeeks = (prevCached.monthly||[])
+        .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
+        .sort((a,b) => Number(a['Неделя']||0) - Number(b['Неделя']||0));
+      weekRows = [...prevWeeks, ...weekRows];
+    } else {
+      block.innerHTML = '<div class="empty">Загрузка данных предыдущего месяца...</div>';
+      try {
+        const sp2 = IS_MGR ? S.selSpec : SPEC_ID;
+        const res = await GET('getMonthBundle', { month: prevMk, spec: sp2 });
+        const bundleData = { kpi: res.kpi||[], monthly: res.monthly||[] };
+        cacheSet(prevKey, bundleData);
+        const prevWeeks = (bundleData.monthly||[])
+          .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
+          .sort((a,b) => Number(a['Неделя']||0) - Number(b['Неделя']||0));
+        weekRows = [...prevWeeks, ...weekRows];
+      } catch(e) {
+        block.innerHTML = '<div class="empty">Не удалось загрузить предыдущий месяц</div>';
+        return;
+      }
+    }
+  }
 
-  // Ищем в данных строку дня с сегодняшней датой, чтобы узнать текущую неделю
-  const todayDayRow = S.monthly.find(r =>
-    r['Специалист'] === tgt &&
-    (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
-    r['Месяц'] === curMk &&
-    // Метка — "dd.MM" — нужно сравнить с сегодня
-    r['Метка'] === (String(today.getDate()).padStart(2,'0') + '.' + String(today.getMonth()+1).padStart(2,'0'))
-  );
-  const curWeekNum = todayDayRow ? Number(todayDayRow['Неделя']||0) : 0;
-
-  // Завершённые недели = все, кроме текущей активной недели
-  const completeWeeks = weekRows.filter(r => {
-    const rowMk = String(r['Месяц']||'');
-    const rowW  = Number(r['Неделя']||0);
-    if (rowMk < curMk) return true;                        // прошлые месяцы — всё завершено
-    if (rowMk === curMk && rowW < curWeekNum) return true; // прошлые недели текущего месяца
-    return false;
-  });
-
-  if (completeWeeks.length < 2) {
+  if (weekRows.length < 2) {
     block.innerHTML = '<div class="empty">Недостаточно данных — нужно минимум 2 завершённые недели</div>';
     return;
   }
 
   // Берём последние 2
-  const wA = completeWeeks[completeWeeks.length - 2]; // предпредыдущая
-  const wB = completeWeeks[completeWeeks.length - 1]; // предыдущая (последняя завершённая)
+  const wA = weekRows[weekRows.length - 2];
+  const wB = weekRows[weekRows.length - 1];
 
-  const lblA = wA['Метка'] || `Нед.${wA['Неделя']} (${fmtDate(wA['Месяц']||'').slice(3)})`;
-  const lblB = wB['Метка'] || `Нед.${wB['Неделя']} (${fmtDate(wB['Месяц']||'').slice(3)})`;
-
-  // Добавляем подпись месяца если недели из разных месяцев
   const mA = String(wA['Месяц']||''), mB = String(wB['Месяц']||'');
   const crossMonth = mA !== mB;
+  const lblA = wA['Метка'] || `Нед.${wA['Неделя']}`;
+  const lblB = wB['Метка'] || `Нед.${wB['Неделя']}`;
   const fullLblA = crossMonth ? `${lblA} (${MN_SHORT[Number(mA.slice(5))]})` : lblA;
   const fullLblB = crossMonth ? `${lblB} (${MN_SHORT[Number(mB.slice(5))]})` : lblB;
 
@@ -1278,6 +1389,7 @@ async function submitDaily() {
   try {
     const res = await POST({action:'saveDaily', entries});
     if (res.ok) {
+      cacheInvalidate();
       stat.style.color='var(--green)'; stat.textContent=`✅ Сохранено ${res.saved} записей`;
       showToast('Данные сохранены!'); clearInpForm(); await loadLog();
     } else throw new Error(res.error);
@@ -1339,7 +1451,7 @@ async function submitPlan() {
   if (!entries.length) { stat.style.color='var(--red)'; stat.textContent='❌ Введите хотя бы одно направление'; return; }
   try {
     const res = await POST({action:'savePlan', entries});
-    if (res.ok) { stat.style.color='var(--green)'; stat.textContent='✅ План сохранён'; showToast('План сохранён!'); renderPlanHistory(); }
+    if (res.ok) { cacheInvalidate(); stat.style.color='var(--green)'; stat.textContent='✅ План сохранён'; showToast('План сохранён!'); renderPlanHistory(); }
     else throw new Error(res.error);
   } catch(e) { stat.style.color='var(--red)'; stat.textContent='❌ '+e.message; }
 }
@@ -1393,6 +1505,27 @@ async function switchTab(tab, btn) {
   if (tab==='plan')    await renderPlanHistory();
 }
 
+function openMonthPicker() {
+  const picker = document.getElementById('monPicker');
+  picker.style.pointerEvents = 'auto';
+  picker.value = mkey(S.year, S.month);
+  picker.focus();
+  picker.showPicker && picker.showPicker();
+  // Hide after interaction
+  picker.addEventListener('blur', () => {
+    picker.style.pointerEvents = 'none';
+  }, {once: true});
+}
+
+async function onMonthPicked(val) {
+  if (!val) return;
+  const [y, m] = val.split('-').map(Number);
+  S.year = y; S.month = m;
+  document.getElementById('monPicker').style.pointerEvents = 'none';
+  await loadMonthly();
+  await loadLog();
+}
+
 async function prevMonth() {
   S.month--; if (S.month<1){S.month=12;S.year--;}
   await loadMonthly(); await loadLog();
@@ -1418,7 +1551,7 @@ async function triggerRebuild() {
   load('Пересчёт данных...');
   try {
     const res = await POST({action:'rebuildAll'});
-    if (res.ok) { showToast('Пересчёт завершён!'); await loadMonthly(); }
+    if (res.ok) { cacheInvalidate(); showToast('Пересчёт завершён!'); await loadMonthly(); }
     else throw new Error(res.error);
   } catch(e) { showToast('Ошибка: '+e.message, true); }
   finally { unload(); }
@@ -1439,11 +1572,11 @@ function getDirsForSpec(tgt) {
 
 function ccl(pct) {
   if (pct===null||pct===undefined) return 'cn';
-  if (pct>=100) return 'ct'; if (pct>=80) return 'cg';
-  if (pct>=50) return 'cy'; return 'cr';
+  if (pct>=100) return 'ct'; if (pct>=90) return 'cg';
+  if (pct>=80) return 'cy'; return 'cr';
 }
 function pctColor(pct) {
-  return {ct:'#52CCC2',cg:'#4DAF6A',cy:'#FFB433',cr:'#FF6A59',cn:'#565c78'}[ccl(pct)];
+  return {ct:'#4ade80',cg:'#52CCC2',cy:'#FFB433',cr:'#FF6A59',cn:'#565c78'}[ccl(pct)];
 }
 
 function fmtN(n) {
