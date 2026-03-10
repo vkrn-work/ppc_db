@@ -158,9 +158,9 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 .gauge-card { padding: 18px 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; overflow: hidden; }
 .gauge-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% -10%, rgba(82,130,255,.07) 0%, transparent 65%); pointer-events: none; }
 .g-lbl { font-family: var(--mono); font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); text-align: center; line-height: 1.4; }
-.g-wrap { position: relative; width: 120px; height: 120px; }
-.g-canvas { width: 120px; height: 120px; }
-.g-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+.g-wrap { position: relative; width: 140px; height: 140px; flex-shrink: 0; }
+.g-canvas { display: block; width: 140px !important; height: 140px !important; }
+.g-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: none; }
 .g-pct { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; }
 .g-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
 .g-worked { font-family: var(--mono); font-size: 10px; color: var(--text2); text-align: center; }
@@ -344,7 +344,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
     <div class="card gauge-card">
       <div class="g-lbl">Прогноз выполнения плана</div>
       <div class="g-wrap">
-        <canvas class="g-canvas" id="gaugeC"></canvas>
+        <canvas class="g-canvas" id="gaugeC" width="140" height="140"></canvas>
         <div class="g-center">
           <div class="g-pct" id="gPct">—</div>
           <div class="g-sub">тренд/план</div>
@@ -780,7 +780,11 @@ function drawGauge(pct) {
   el.textContent = pct!==null ? Math.round(pct)+'%' : '—';
   el.style.color = col;
   if (gaugeChart) { gaugeChart.destroy(); gaugeChart=null; }
-  const ctx = document.getElementById('gaugeC').getContext('2d');
+  const canvas = document.getElementById('gaugeC');
+  // Явно задаём атрибуты width/height — Chart.js использует именно их при responsive:false
+  canvas.width  = 140;
+  canvas.height = 140;
+  const ctx = canvas.getContext('2d');
   const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg4').trim() || '#3d3d50';
   const fill = pct!==null ? Math.min(pct/100, 1.5) : 0;
   gaugeChart = new Chart(ctx, {
@@ -790,9 +794,13 @@ function drawGauge(pct) {
       backgroundColor:[col, bgColor],
       borderWidth:0, circumference:270, rotation:225
     }]},
-    options:{responsive:false,cutout:'78%',
+    options:{
+      responsive:false,
+      width:140, height:140,
+      cutout:'78%',
       plugins:{legend:{display:false},tooltip:{enabled:false}},
-      animation:{duration:600,easing:'easeOutQuart'}}
+      animation:{duration:600,easing:'easeOutQuart'}
+    }
   });
 }
 
