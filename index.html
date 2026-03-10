@@ -505,7 +505,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 // ══════════════════════════════════════════════════════════════
 //  ★  CONFIG — замените URL после деплоя Apps Script
 // ══════════════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxFITUpPwjzonzEf9CvmNUU34aVHEaulOJDXUWuhOerQuaC1F4KN1by_mHh2JoryOro/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznz4OuOLRMPbPBvhGh9d07qgmS___YgOWSuPhzKeuSWVqwcc0pqAQ6DHTDeUgdV3En/exec';
 
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -955,13 +955,11 @@ async function collectAllWeeks(tgt) {
     src.rows
       .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
       .forEach(r => {
-        const rowMk = String(r['Месяц']||'');
+        const rowMk = _mkFromRow_(r, 'Месяц');
         const rowW  = Number(r['Неделя']||0);
         // Пропускаем текущую незавершённую неделю
         if (rowMk === curMk && rowW >= curWeekNum) return;
-        const mn = Number(rowMk.slice(5));
-        const fullLabel = `Нед.${rowW} ${MN_SHORT[mn] || rowMk}`;
-        allWeeks.push({ mk: rowMk, weekNum: rowW, label: r['Метка']||`Нед.${rowW}`, fullLabel, row: r });
+        allWeeks.push({ mk: rowMk, weekNum: rowW, row: r });
       });
   });
 
@@ -1017,15 +1015,25 @@ async function renderWeekComparison() {
 
 function renderWeekCmpContent(allWeeks, tgt) {
   const block = document.getElementById('weekCmpBlock');
-  const wA = allWeeks.find(w => w.mk === WEEK_SEL.a?.mk && w.weekNum === WEEK_SEL.a?.weekNum) || allWeeks[allWeeks.length - 2];
-  const wB = allWeeks.find(w => w.mk === WEEK_SEL.b?.mk && w.weekNum === WEEK_SEL.b?.weekNum) || allWeeks[allWeeks.length - 1];
 
-  // Опции для селекторов
-  const opts = allWeeks.map(w =>
-    `<option value="${w.mk}|${w.weekNum}" ${w.mk===wA.mk&&w.weekNum===wA.weekNum?'selected':''}>${w.fullLabel}</option>`
+  // Найти текущие выбранные недели в массиве allWeeks
+  const wA = allWeeks.find(w => w.mk === WEEK_SEL.a?.mk && w.weekNum === WEEK_SEL.a?.weekNum)
+          || allWeeks[allWeeks.length - 2];
+  const wB = allWeeks.find(w => w.mk === WEEK_SEL.b?.mk && w.weekNum === WEEK_SEL.b?.weekNum)
+          || allWeeks[allWeeks.length - 1];
+
+  // Синхронизируем WEEK_SEL с актуальными объектами из allWeeks (гарантируем наличие row)
+  WEEK_SEL.a = wA;
+  WEEK_SEL.b = wB;
+
+  const mkA = `${wA.mk}|${wA.weekNum}`;
+  const mkB = `${wB.mk}|${wB.weekNum}`;
+
+  const opts  = allWeeks.map(w =>
+    `<option value="${w.mk}|${w.weekNum}" ${`${w.mk}|${w.weekNum}`===mkA?'selected':''}>${weekLabel(w.mk, w.weekNum)}</option>`
   ).join('');
   const optsB = allWeeks.map(w =>
-    `<option value="${w.mk}|${w.weekNum}" ${w.mk===wB.mk&&w.weekNum===wB.weekNum?'selected':''}>${w.fullLabel}</option>`
+    `<option value="${w.mk}|${w.weekNum}" ${`${w.mk}|${w.weekNum}`===mkB?'selected':''}>${weekLabel(w.mk, w.weekNum)}</option>`
   ).join('');
 
   const displayDirs = IS_MGR ? [...S.settings.dirs, 'Общее'] : ['Общее'];
@@ -1086,35 +1094,42 @@ function renderWeekCmpContent(allWeeks, tgt) {
   block.innerHTML = html;
 }
 
+function weekLabel(mk, weekNum) {
+  // "1 нед 03.26", "4 нед 02.26" etc
+  const mn = String(mk.slice(5)).padStart(2,'0');
+  const yr = mk.slice(2,4);
+  return `${weekNum} нед ${mn}.${yr}`;
+}
+
 function onWeekSelChange(slot, val) {
-  const [mk, weekNum] = val.split('|');
+  const [mk, wn] = val.split('|');
+  const weekNum  = Number(wn);
   const sp  = IS_MGR ? S.selSpec : SPEC_ID;
   const tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
-  // Найти row из кэша
-  const key = cacheKey(sp, mk);
-  const cached = cacheGet(key);
+
   const sourceRows = mk === mkey(S.year, S.month)
     ? S.monthly
-    : (cached ? cached.monthly : []);
+    : (cacheGet(cacheKey(sp, mk))?.monthly || []);
+
   const row = sourceRows.find(r =>
     r['Специалист'] === tgt &&
     r['Тип'] === 'итог_нед' &&
-    String(r['Месяц']||'') === mk &&
-    Number(r['Неделя']||0) === Number(weekNum)
+    _mkFromRow_(r, 'Месяц') === mk &&
+    Number(r['Неделя']||0) === weekNum
   );
-  if (!row) return;
-  const mn = Number(mk.slice(5));
-  WEEK_SEL[slot] = { mk, weekNum: Number(weekNum), label: row['Метка']||`Нед.${weekNum}`, fullLabel: `Нед.${weekNum} ${MN_SHORT[mn]||mk}`, row };
+  if (!row) { console.warn('row not found', mk, weekNum, tgt); return; }
 
-  // Пересобрать allWeeks из кэша синхронно (данные уже загружены) и перерисовать
-  const allWeeksSync = collectAllWeeksSync(tgt);
-  if (allWeeksSync.length >= 2) renderWeekCmpContent(allWeeksSync, tgt);
+  WEEK_SEL[slot] = { mk, weekNum, row };
+
+  const allWeeks = collectAllWeeksSync(tgt);
+  if (allWeeks.length >= 2) renderWeekCmpContent(allWeeks, tgt);
 }
 
 function collectAllWeeksSync(tgt) {
   const curMk = mkey(S.year, S.month);
   const today = new Date();
   const sp    = IS_MGR ? S.selSpec : SPEC_ID;
+
   const todayDayRow = S.monthly.find(r =>
     r['Специалист'] === tgt &&
     (r['Тип'] === 'день' || r['Тип'] === 'день_буд') &&
@@ -1129,7 +1144,7 @@ function collectAllWeeksSync(tgt) {
     while (pm < 1) { pm += 12; py--; }
     const pmk = mkey(py, pm);
     const cached = cacheGet(cacheKey(sp, pmk));
-    if (cached && cached.monthly) sources.push({ mk: pmk, rows: cached.monthly });
+    if (cached?.monthly?.length) sources.push({ mk: pmk, rows: cached.monthly });
   }
 
   const allWeeks = [];
@@ -1138,14 +1153,13 @@ function collectAllWeeksSync(tgt) {
     src.rows
       .filter(r => r['Специалист'] === tgt && r['Тип'] === 'итог_нед')
       .forEach(r => {
-        const rowMk = String(r['Месяц']||'');
+        const rowMk = _mkFromRow_(r, 'Месяц');
         const rowW  = Number(r['Неделя']||0);
         if (rowMk === curMk && rowW >= curWeekNum) return;
         const k = `${rowMk}|${rowW}`;
         if (seen.has(k)) return;
         seen.add(k);
-        const mn = Number(rowMk.slice(5));
-        allWeeks.push({ mk: rowMk, weekNum: rowW, label: r['Метка']||`Нед.${rowW}`, fullLabel: `Нед.${rowW} ${MN_SHORT[mn]||rowMk}`, row: r });
+        allWeeks.push({ mk: rowMk, weekNum: rowW, row: r });
       });
   });
   allWeeks.sort((a, b) => a.mk !== b.mk ? a.mk.localeCompare(b.mk) : a.weekNum - b.weekNum);
@@ -1666,6 +1680,17 @@ async function triggerRebuild() {
 // ══════════════════════════════════════════════════════════════
 function mkey(y,m) { return `${y}-${String(m).padStart(2,'0')}`; }
 function toISODate(d) { return d.toISOString().slice(0,10); }
+
+// Безопасно вытаскивает 'yyyy-MM' из поля строки (значение может быть Date или строкой)
+function _mkFromRow_(row, field) {
+  const v = row[field];
+  if (!v) return '';
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}`;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,7);
+  return s.slice(0,7);
+}
 
 // Determine which dirs to show for a spec
 function getDirsForSpec(tgt) {
