@@ -1666,12 +1666,16 @@ function renderWkSelectors() {
   selA.innerHTML = opts;
   selB.innerHTML = opts;
 
-  // Автовыбор: предпоследняя → А, последняя завершённая → Б
-  if (weeks.length >= 2) {
-    selA.value = `${weeks[weeks.length-2].mk}|${weeks[weeks.length-2].weekNum}`;
-  }
-  if (WK.lastCompleted) {
-    selB.value = `${WK.lastCompleted.mk}|${WK.lastCompleted.weekNum}`;
+  // Автовыбор: Б = последняя полная неделя (lastCompleted),
+  //            А = неделя непосредственно перед ней в массиве
+  const last = WK.lastCompleted;
+  if (last) {
+    const lastIdx = weeks.findIndex(w => w.mk === last.mk && w.weekNum === last.weekNum);
+    selB.value = `${last.mk}|${last.weekNum}`;
+    if (lastIdx > 0) {
+      const prev = weeks[lastIdx - 1];
+      selA.value = `${prev.mk}|${prev.weekNum}`;
+    }
   }
 }
 
@@ -1688,9 +1692,8 @@ function renderWkCmpTable() {
   const [mkB, wnB] = valB.split('|'); const wB = WK.allWeeks.find(w => w.mk===mkB && w.weekNum===Number(wnB));
   if (!wA || !wB) { wrap.innerHTML='<div class="empty">Не найдены данные для выбранных недель</div>'; return; }
 
-  const sp   = IS_MGR ? S.selSpec : SPEC_ID;
-  const tgt  = (sp==='manager'||sp==='Все') ? 'Все' : sp;
-  const dirs = (tgt === 'Все') ? ['Общее'] : [...S.settings.dirs, 'Общее'];
+  // Всегда показываем все направления + Общее
+  const dirs = [...S.settings.dirs, 'Общее'];
 
   const MKEYS = [
     {n:'Клики',   k:'Клики',  type:'qty',     fmt: fmtN},
@@ -1736,39 +1739,33 @@ function renderWkCmpTable() {
   wrap.innerHTML = html;
 }
 
-// ── Блок 2: все недели строчно + среднее + сравнение с последней ─
-function renderWkAllTable(tgt) {
+// ── Блок 2: все недели строчно — сравнение вверху, потом среднее, потом недели (свежие сверху)
+function renderWkAllTable() {
   const wrap  = document.getElementById('wkAllTblWrap');
   const weeks = WK.allWeeks;
   if (!weeks.length) { wrap.innerHTML='<div class="empty">Нет завершённых недель</div>'; return; }
 
-  const sp  = IS_MGR ? S.selSpec : SPEC_ID;
-  if (!tgt) tgt = (sp==='manager'||sp==='Все') ? 'Все' : sp;
+  // Всегда показываем все направления + Общее
+  const dirs = [...S.settings.dirs, 'Общее'];
 
-  // Направления зависят от выбранного специалиста:
-  // — конкретный специалист (не "Все") → его направления + Общее
-  // — "Все" → только Общее (агрегат уже посчитан)
-  const dirs = (tgt === 'Все')
-    ? ['Общее']
-    : [...S.settings.dirs, 'Общее'];
-
-  // Базовые показатели для взвешенного среднего (суммируемые)
-  const BASE = ['Клики','Расход','MQL','SQL'];
-  // Все отображаемые колонки
   const MKEYS = [
-    {n:'Клики',   k:'Клики',  type:'qty',     base:true},
-    {n:'CPC',     k:'CPC',    type:'cost',    base:false},
-    {n:'Заявки',  k:'MQL',    type:'qty',     base:true},
-    {n:'CR%',     k:'CR%',    type:'conv',    base:false},
-    {n:'БП',      k:'SQL',    type:'qty',     base:true},
-    {n:'%БП',     k:'%БП',   type:'conv',    base:false},
-    {n:'Расход',  k:'Расход', type:'neutral', base:true},
-    {n:'CPL',     k:'CPL',    type:'cost',    base:false},
-    {n:'Цена БП', k:'CPsql',  type:'cost',    base:false},
+    {n:'Клики',   k:'Клики',  type:'qty'},
+    {n:'CPC',     k:'CPC',    type:'cost'},
+    {n:'Заявки',  k:'MQL',    type:'qty'},
+    {n:'CR%',     k:'CR%',    type:'conv'},
+    {n:'БП',      k:'SQL',    type:'qty'},
+    {n:'%БП',     k:'%БП',   type:'conv'},
+    {n:'Расход',  k:'Расход', type:'neutral'},
+    {n:'CPL',     k:'CPL',    type:'cost'},
+    {n:'Цена БП', k:'CPsql',  type:'cost'},
   ];
 
-  // Суммируем базовые метрики для взвешенного среднего
-  const bsums = {}; // dir → {Клики, Расход, MQL, SQL}
+  // Последняя ПОЛНАЯ завершённая неделя
+  const lastWeek = WK.lastCompleted;
+  if (!lastWeek) { wrap.innerHTML='<div class="empty">Нет завершённых недель</div>'; return; }
+
+  // Взвешенное среднее из базовых сумм
+  const bsums = {};
   dirs.forEach(dir => { bsums[dir] = {Клики:0, Расход:0, MQL:0, SQL:0}; });
   weeks.forEach(w => {
     dirs.forEach(dir => {
@@ -1778,35 +1775,25 @@ function renderWkAllTable(tgt) {
       bsums[dir].SQL    += Number(w.row[`${dir}__SQL`])||0;
     });
   });
-
-  // Считаем среднее: базовые — делим сумму на кол-во недель; производные — из базовых сумм
   const n = weeks.length;
   const avg = {};
   dirs.forEach(dir => {
     const b = bsums[dir];
-    const avgC = n ? b.Клики/n  : 0;
-    const avgR = n ? b.Расход/n : 0;
-    const avgM = n ? b.MQL/n    : 0;
-    const avgS = n ? b.SQL/n    : 0;
+    const C = n ? b.Клики/n : 0, R = n ? b.Расход/n : 0,
+          M = n ? b.MQL/n   : 0, Sq = n ? b.SQL/n   : 0;
     avg[dir] = {
-      'Клики':  avgC,
-      'MQL':    avgM,
-      'SQL':    avgS,
-      'Расход': avgR,
-      'CPC':    avgC ? avgR/avgC : 0,
-      'CR%':    avgC ? avgM/avgC*100 : 0,
-      '%БП':    avgM ? avgS/avgM*100 : 0,
-      'CPL':    avgM ? avgR/avgM : 0,
-      'CPsql':  avgS ? avgR/avgS : 0,
+      'Клики': C, 'MQL': M, 'SQL': Sq, 'Расход': R,
+      'CPC':   C  ? R/C     : 0,
+      'CR%':   C  ? M/C*100 : 0,
+      '%БП':   M  ? Sq/M*100: 0,
+      'CPL':   M  ? R/M     : 0,
+      'CPsql': Sq ? R/Sq    : 0,
     };
   });
 
-  const lastWeek = WK.lastCompleted || weeks[weeks.length - 1];
-
   const fmtV = (v, k) => {
-    if (v===null||v===undefined||isNaN(Number(v))||Number(v)===0)
-      return '<span class="null-v">—</span>';
     const n2 = Number(v);
+    if (!n2 && n2 !== 0 || isNaN(n2) || n2 === 0) return '<span class="null-v">—</span>';
     if (k==='Расход'||k==='CPL'||k==='CPsql'||k==='CPC') return fmtN(Math.round(n2));
     if (k==='CR%'||k==='%БП') return n2.toFixed(1)+'%';
     return fmtN(n2);
@@ -1817,49 +1804,23 @@ function renderWkAllTable(tgt) {
     const diff = val - avgVal;
     const pct  = (diff / avgVal * 100).toFixed(1);
     let cls = 'neu';
-    if (diff !== 0 && type !== 'neutral') {
+    if (diff !== 0 && type !== 'neutral')
       cls = (type === 'cost' ? diff < 0 : diff > 0) ? 'imp' : 'deg';
-    }
-    return `<span class="${cls}" style="font-size:11px">${diff>0?'+':''}${pct}%</span>`;
+    return `<span class="${cls}">${diff>0?'+':''}${pct}%</span>`;
   };
 
   // Шапка
   let html = `<table class="mtbl"><thead>
-    <tr><th class="fix" style="min-width:110px">Неделя</th>`;
+    <tr><th class="fix" style="min-width:130px">Неделя</th>`;
   dirs.forEach((d,i) => {
     html += `<th class="dh" colspan="${MKEYS.length}" style="background:${DIR_BG[i%DIR_BG.length]};border-left:2px solid ${DIR_COLORS[i%DIR_COLORS.length]}">${d}</th>`;
   });
   html += `</tr><tr><th class="fix"></th>`;
-  dirs.forEach((_,i) => {
-    MKEYS.forEach(m => { html += `<th class="col-dir${i}">${m.n}</th>`; });
-  });
+  dirs.forEach((_,i) => { MKEYS.forEach(m => { html += `<th class="col-dir${i}">${m.n}</th>`; }); });
   html += `</tr></thead><tbody>`;
 
-  // Строки недель
-  weeks.forEach(w => {
-    const isLast = w.mk === lastWeek.mk && w.weekNum === lastWeek.weekNum;
-    const rowStyle = isLast ? ' style="background:rgba(82,130,255,.06)"' : '';
-    html += `<tr${rowStyle}><td class="fix" style="font-weight:${isLast?700:400};color:${isLast?'var(--accent)':'var(--text2)'}">${wkLabel(w.mk, w.weekNum)}</td>`;
-    dirs.forEach((dir, i) => {
-      MKEYS.forEach(m => {
-        const v = Number(w.row[`${dir}__${m.k}`])||0;
-        html += `<td class="col-dir${i}">${fmtV(v, m.k)}</td>`;
-      });
-    });
-    html += `</tr>`;
-  });
-
-  // Строка среднего
-  html += `<tr class="r-week"><td class="fix">⌀ Среднее (${n} нед.)</td>`;
-  dirs.forEach((dir, i) => {
-    MKEYS.forEach(m => {
-      html += `<td class="col-dir${i}">${fmtV(avg[dir][m.k], m.k)}</td>`;
-    });
-  });
-  html += `</tr>`;
-
-  // Строка последняя vs среднее
-  html += `<tr class="r-trend"><td class="fix" style="color:var(--teal)">▲▼ Послед. vs ⌀</td>`;
+  // 1. Строка сравнения последней с средним — вверху
+  html += `<tr class="r-trend"><td class="fix" style="color:var(--teal);white-space:nowrap">▲▼ ${wkLabel(lastWeek.mk, lastWeek.weekNum)} vs ⌀</td>`;
   dirs.forEach((dir, i) => {
     MKEYS.forEach(m => {
       const v = Number(lastWeek.row[`${dir}__${m.k}`])||0;
@@ -1867,6 +1828,23 @@ function renderWkAllTable(tgt) {
     });
   });
   html += `</tr>`;
+
+  // 2. Строка среднего
+  html += `<tr class="r-week"><td class="fix">⌀ Среднее (${n} нед.)</td>`;
+  dirs.forEach((dir, i) => { MKEYS.forEach(m => { html += `<td class="col-dir${i}">${fmtV(avg[dir][m.k], m.k)}</td>`; }); });
+  html += `</tr>`;
+
+  // 3. Строки недель — свежие сверху
+  [...weeks].reverse().forEach(w => {
+    const isLast = w.mk === lastWeek.mk && w.weekNum === lastWeek.weekNum;
+    html += `<tr${isLast?' style="background:rgba(82,130,255,.06)"':''}><td class="fix" style="font-weight:${isLast?700:400};color:${isLast?'var(--accent)':' var(--text2)'}">${wkLabel(w.mk, w.weekNum)}</td>`;
+    dirs.forEach((dir, i) => {
+      MKEYS.forEach(m => {
+        html += `<td class="col-dir${i}">${fmtV(Number(w.row[`${dir}__${m.k}`])||0, m.k)}</td>`;
+      });
+    });
+    html += `</tr>`;
+  });
 
   html += `</tbody></table>`;
   wrap.innerHTML = html;
