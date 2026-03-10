@@ -537,7 +537,7 @@ body { background: var(--bg0); color: var(--text); font-family: var(--font); min
 // ══════════════════════════════════════════════════════════════
 //  ★  CONFIG — замените URL после деплоя Apps Script
 // ══════════════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznz4OuOLRMPbPBvhGh9d07qgmS___YgOWSuPhzKeuSWVqwcc0pqAQ6DHTDeUgdV3En/exec';
+const SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -1640,8 +1640,9 @@ async function loadWeekly() {
 
     // Хронологический порядок
     allWeeks.sort((a, b) => a.mk !== b.mk ? a.mk.localeCompare(b.mk) : a.weekNum - b.weekNum);
-    WK.allWeeks = allWeeks;
-    WK.loaded   = true;
+    WK.allWeeks      = allWeeks;
+    WK.lastCompleted = allWeeks.length ? allWeeks[allWeeks.length - 1] : null; // последняя ПОЛНАЯ неделя
+    WK.loaded        = true;
 
     renderWkSelectors();
     renderWkCmpTable();
@@ -1665,16 +1666,18 @@ function renderWkSelectors() {
   selA.innerHTML = opts;
   selB.innerHTML = opts;
 
-  // Автовыбор: предпоследняя и последняя
+  // Автовыбор: предпоследняя → А, последняя завершённая → Б
   if (weeks.length >= 2) {
     selA.value = `${weeks[weeks.length-2].mk}|${weeks[weeks.length-2].weekNum}`;
-    selB.value = `${weeks[weeks.length-1].mk}|${weeks[weeks.length-1].weekNum}`;
+  }
+  if (WK.lastCompleted) {
+    selB.value = `${WK.lastCompleted.mk}|${WK.lastCompleted.weekNum}`;
   }
 }
 
 function onWkSel() { renderWkCmpTable(); }
 
-// ── Блок 1: таблица сравнения двух выбранных недель ────────────
+// ── Блок 1: красивый grid-дизайн сравнения двух недель ────────
 function renderWkCmpTable() {
   const wrap = document.getElementById('wkCmpTblWrap');
   const valA = document.getElementById('wkSelA')?.value;
@@ -1690,53 +1693,46 @@ function renderWkCmpTable() {
   const dirs = (tgt === 'Все') ? ['Общее'] : [...S.settings.dirs, 'Общее'];
 
   const MKEYS = [
-    {n:'Клики',   k:'Клики',  type:'qty'},
-    {n:'CPC',     k:'CPC',    type:'cost'},
-    {n:'Заявки',  k:'MQL',    type:'qty'},
-    {n:'CR%',     k:'CR%',    type:'conv'},
-    {n:'БП',      k:'SQL',    type:'qty'},
-    {n:'%БП',     k:'%БП',   type:'conv'},
-    {n:'Расход',  k:'Расход', type:'neutral'},
-    {n:'CPL',     k:'CPL',    type:'cost'},
-    {n:'Цена БП', k:'CPsql',  type:'cost'},
+    {n:'Клики',   k:'Клики',  type:'qty',     fmt: fmtN},
+    {n:'CPC',     k:'CPC',    type:'cost',    fmt: fmtMshort},
+    {n:'Заявки',  k:'MQL',    type:'qty',     fmt: fmtN},
+    {n:'CR%',     k:'CR%',    type:'conv',    fmt: fmtPct},
+    {n:'БП',      k:'SQL',    type:'qty',     fmt: fmtN},
+    {n:'%БП',     k:'%БП',   type:'conv',    fmt: fmtPct},
+    {n:'Расход',  k:'Расход', type:'neutral', fmt: fmtMshort},
+    {n:'CPL',     k:'CPL',    type:'cost',    fmt: fmtMshort},
+    {n:'Цена БП', k:'CPsql',  type:'cost',    fmt: fmtMshort},
   ];
 
-  let html = `<div style="overflow-x:auto"><table class="mtbl" style="min-width:500px">
-    <thead>
-      <tr>
-        <th class="fix" style="min-width:90px">Метрика</th>`;
-  dirs.forEach((d,i) => {
-    html += `<th class="dh" colspan="3" style="background:${DIR_BG[i%DIR_BG.length]};border-left:2px solid ${DIR_COLORS[i%DIR_COLORS.length]}">${d}</th>`;
-  });
-  html += `</tr><tr><th class="fix"></th>`;
-  dirs.forEach((_,i) => {
-    html += `<th class="col-dir${i}" style="min-width:80px">${wkLabel(mkA, Number(wnA))}</th>`;
-    html += `<th class="col-dir${i}" style="min-width:80px">${wkLabel(mkB, Number(wnB))}</th>`;
-    html += `<th class="col-dir${i}" style="min-width:60px">Δ</th>`;
-  });
-  html += `</tr></thead><tbody>`;
-
-  MKEYS.forEach(m => {
-    html += `<tr><td class="fix" style="color:var(--text2)">${m.n}</td>`;
-    dirs.forEach((dir, i) => {
-      const va  = Number(wA.row[`${dir}__${m.k}`])||0;
-      const vb  = Number(wB.row[`${dir}__${m.k}`])||0;
+  let html = `<div class="week-cmp-grid">`;
+  dirs.forEach((dir, di) => {
+    const dirColor = DIR_COLORS[di % DIR_COLORS.length];
+    html += `<div>
+      <div class="week-col-title" style="color:${dirColor}">📂 ${dir}</div>`;
+    MKEYS.forEach(m => {
+      const va   = Number(wA.row[`${dir}__${m.k}`])||0;
+      const vb   = Number(wB.row[`${dir}__${m.k}`])||0;
       const diff = vb - va;
       const pct  = va ? ((diff/va)*100).toFixed(1) : null;
-      let diffCls = 'neu';
-      if (diff !== 0 && m.type !== 'neutral') {
+      let arrow = '→', cls = 'neu';
+      if (m.type !== 'neutral' && diff !== 0) {
         const improved = m.type === 'cost' ? diff < 0 : diff > 0;
-        diffCls = improved ? 'imp' : 'deg';
+        arrow = diff > 0 ? '↑' : '↓';
+        cls   = improved ? 'imp' : 'deg';
       }
-      const fmt = (m.k==='Расход'||m.k==='CPL'||m.k==='CPsql'||m.k==='CPC') ? fmtN : (m.k.includes('%') ? v => v?v.toFixed(1)+'%':'—' : fmtN);
-      html += `<td class="col-dir${i}">${fmt(va)}</td>`;
-      html += `<td class="col-dir${i}" style="color:var(--text);font-weight:600">${fmt(vb)}</td>`;
-      html += `<td class="col-dir${i} ${diffCls}" style="font-size:10px">${pct!==null?(diff>0?'+':'')+pct+'%':'—'}</td>`;
+      html += `<div class="week-metric-row">
+        <span class="wm-name">${m.n}</span>
+        <div class="wm-vals">
+          <span class="wm-val prev">${m.fmt(va)}</span>
+          <span class="wm-arrow ${cls}">${arrow}</span>
+          <span class="wm-val">${m.fmt(vb)}</span>
+          <span class="wm-diff ${cls}">${pct!==null ? (diff>0?'+':'')+pct+'%' : ''}</span>
+        </div>
+      </div>`;
     });
-    html += `</tr>`;
+    html += `</div>`;
   });
-
-  html += `</tbody></table></div>`;
+  html += `</div>`;
   wrap.innerHTML = html;
 }
 
@@ -1805,7 +1801,7 @@ function renderWkAllTable(tgt) {
     };
   });
 
-  const lastWeek = weeks[weeks.length - 1];
+  const lastWeek = WK.lastCompleted || weeks[weeks.length - 1];
 
   const fmtV = (v, k) => {
     if (v===null||v===undefined||isNaN(Number(v))||Number(v)===0)
